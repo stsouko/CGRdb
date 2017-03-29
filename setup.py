@@ -20,6 +20,7 @@
 #  MA 02110-1301, USA.
 #
 from CGRdb.version import version
+from os.path import join, dirname
 from setuptools import setup, find_packages
 
 setup(
@@ -31,15 +32,13 @@ setup(
     author='Dr. Ramil Nugmanov',
     author_email='stsouko@live.ru',
     description='CGRdb',
-
-    install_requires=['networkx>=2.0.dev', 'CGRtools>=2.6', 'CIMtools>=1.2', 'bitstring',
-                      'cffi', 'psycopg2cffi', 'pony'],
+    install_requires=['networkx>=2.0.dev', 'CGRtools>=2.6', 'CIMtools>=1.2', 'bitstring', 'pony'],
+    extras_require={'postgres':  ['cffi', 'psycopg2cffi']},
     dependency_links=['git+https://github.com/networkx/networkx.git@master#egg=networkx-2.0.dev',
                       'git+https://github.com/stsouko/CGRtools.git@2.6#egg=CGRtools-2.6',
                       'git+https://github.com/stsouko/MODtools.git@1.2#egg=CIMtools-1.2'],
-    long_description="CGRdb - DataBase Management system for chemical data",
-
-    keywords="CGRdb database search similarity chemistry",
+    long_description=open(join(dirname(__file__), 'README.md')).read(),
+    keywords='CGRdb database search similarity chemistry',
     classifiers=['Environment :: Web Environment',
                  'Intended Audience :: Science/Research',
                  'Intended Audience :: Developers',

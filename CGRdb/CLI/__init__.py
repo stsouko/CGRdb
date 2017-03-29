@@ -18,18 +18,3 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-
-
-class Similarity(object):
-    @classmethod
-    def load_tree(cls, reindex=False):
-        if reindex or cls.__name__ not in cls.__cached_tree:
-            tree = None
-            if tree:
-                cls.__cached_tree[cls.__name__] = tree
-
-    __cached_tree = {}
-
-    @classmethod
-    def find_similar(cls, structures):
-        pass

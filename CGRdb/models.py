@@ -18,26 +18,26 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from collections import OrderedDict
-from datetime import datetime
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, db_session
-from networkx import relabel_nodes
 from bitstring import BitArray
-from itertools import count
-from networkx.readwrite.json_graph import node_link_graph, node_link_data
-from CGRtools.FEAR import FEAR
-from CGRtools.CGRreactor import CGRreactor
 from CGRtools.CGRcore import CGRcore
+from CGRtools.CGRreactor import CGRreactor
+from CGRtools.FEAR import FEAR
 from CGRtools.files import MoleculeContainer, ReactionContainer
 from CIMtools.descriptors.fragmentor import Fragmentor
+from collections import OrderedDict
+from datetime import datetime
+from itertools import count
+from networkx import relabel_nodes
+from networkx.readwrite.json_graph import node_link_graph, node_link_data
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, db_session
+from .config import (FP_SIZE, FP_ACTIVE_BITS, FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO,
+                     FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR,
+                     FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL)
 from .search.fingerprints import Fingerprints
 from .search.similarity import Similarity
 from .search.structure import ReactionSearch as ReactionStructureSearch, MoleculeSearch as MoleculeStructureSearch
 from .search.substructure import (ReactionSearch as ReactionSubStructureSearch,
                                   MoleculeSearch as MoleculeSubStructureSearch)
-from ..config import (FP_SIZE, FP_ACTIVE_BITS, FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO,
-                      FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR,
-                      FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL)
 
 fear = FEAR(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
 cgr_core = CGRcore()
