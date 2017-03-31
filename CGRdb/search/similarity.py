@@ -31,5 +31,5 @@ class Similarity(object):
     __cached_tree = {}
 
     @classmethod
-    def find_similar(cls, structures):
+    def find_similar(cls, structure, number=10):
         pass

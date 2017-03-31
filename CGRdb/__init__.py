@@ -28,7 +28,7 @@ class Loader:
     __databases = {}
 
     @classmethod
-    def load_schemas(cls, user_entity=None):
+    def load_schemas(cls, user_entity=None, reindex=False):
         if not cls.__schemas:
             if DEBUG:
                 sql_debug(True)
@@ -36,7 +36,7 @@ class Loader:
             for schema in DB_DATA_LIST:
                 x = Database()
                 cls.__schemas[schema] = x
-                cls.__databases[schema] = load_tables(x, schema, user_entity)
+                cls.__databases[schema] = load_tables(x, schema, user_entity, reindex=reindex)
                 if DEBUG:
                     x.bind('sqlite', 'database.sqlite')
                 else:

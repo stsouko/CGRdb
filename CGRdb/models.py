@@ -45,6 +45,16 @@ cgr_reactor = CGRreactor(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
 fingerprints = Fingerprints(FP_SIZE, active_bits=FP_ACTIVE_BITS)
 
 
+class UserADHOCMeta(type):
+    def __getitem__(cls, item):
+        return cls(item)
+
+
+class UserADHOC(metaclass=UserADHOCMeta):
+    def __init__(self, uid):
+        self.id = uid
+
+
 class FingerprintMixin(object):
     @property
     def bitstring_fingerprint(self):
@@ -64,7 +74,10 @@ class IsomorphismMixin(object):
         return next(cgr_reactor.get_cgr_matcher(g, h).isomorphisms_iter())
 
 
-def load_tables(db, schema, user_entity):
+def load_tables(db, schema, user_entity, reindex=False):
+    if not user_entity:  # User Entity ADHOC.
+        user_entity = UserADHOC
+
     class UserMixin(object):
         @property
         @db_session
@@ -422,6 +435,6 @@ def load_tables(db, schema, user_entity):
                 date = datetime.utcnow()
             db.Entity.__init__(self, user_id=user.id, date=date, reaction=reaction, data=data)
 
-    Molecule.load_tree()
-    Reaction.load_tree()
+    Molecule.load_tree(reindex=reindex)
+    Reaction.load_tree(reindex=reindex)
     return Molecule, Reaction, Conditions

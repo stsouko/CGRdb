@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2016 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2016 Svetlana Musaeva <sveta_musaeva.95@mail.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -18,15 +19,3 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-
-
-class MoleculeSearch(object):
-    @classmethod
-    def find_substructures(cls, structure):
-        pass
-
-
-class ReactionSearch(object):
-    @classmethod
-    def find_substructures(cls, structure):
-        pass
