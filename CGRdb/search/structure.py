@@ -23,27 +23,21 @@
 class MoleculeSearch(object):
     @classmethod
     def structure_exists(cls, structure):
-        pass
+        return cls.exists_wrapper(fear=cls.get_fear(structure))
 
     @classmethod
     def find_structure(cls, structure):
-        pass
+        return cls.get_wrapper(fear=cls.get_fear(structure))
 
 
 class ReactionSearch(object):
     @classmethod
-    def mapless_exists(cls, structure):
-        fresh = cls.refresh_reaction(structure)
-        if fresh:
-            return cls.exists(mapless_fear=cls.get_mapless_fear(fresh))
-        return False
+    def mapless_structure_exists(cls, structure):
+        pass
 
     @classmethod
     def structure_exists(cls, structure):
-        fresh = cls.refresh_reaction(structure)
-        if fresh:
-            return cls.exists(fear=cls.get_fear(fresh))
-        return False
+        pass
 
     @classmethod
     def find_structure(cls, structure):
