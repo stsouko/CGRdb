@@ -30,8 +30,6 @@ from itertools import count, product
 from networkx import relabel_nodes
 from networkx.readwrite.json_graph import node_link_graph, node_link_data
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, db_session, left_join, select
-from shutil import rmtree
-from tempfile import mkdtemp
 from .config import (FP_SIZE, FP_ACTIVE_BITS, FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO,
                      FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR,
                      FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL, WORKPATH)
@@ -92,7 +90,8 @@ def load_tables(db, schema, user_entity=None, reindex=False):
         reactions = Set('MoleculeReaction')
 
         __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_MOL,
-                                  min_length=FRAGMENT_MIN_MOL, max_length=FRAGMENT_MAX_MOL, useformalcharge=True)
+                                  workpath=WORKPATH, min_length=FRAGMENT_MIN_MOL, max_length=FRAGMENT_MAX_MOL,
+                                  useformalcharge=True)
 
         def __init__(self, structure, user, fingerprint=None, fear=None):
             if fear is None:
@@ -109,10 +108,7 @@ def load_tables(db, schema, user_entity=None, reindex=False):
 
         @classmethod
         def get_fingerprints(cls, structures):
-            workpath = mkdtemp(prefix='fps_', dir=WORKPATH)
-            cls.__fragmentor.set_work_path(workpath)
             f = cls.__fragmentor.get(structures)['X']
-            rmtree(workpath)
             return cls.descriptors_to_fingerprints(f)
 
         @staticmethod
@@ -185,7 +181,7 @@ def load_tables(db, schema, user_entity=None, reindex=False):
             data = node_link_data(structure)
             self.__cached_structure = structure
             self.__cached_fingerprint = fingerprint
-            db.Entity.__init__(self, data=data, user_id=user.id, fear=fear, fingerprint=fingerprint.bin,
+            db.Entity.__init__(self, data=data, user_id=user.id, fear=fear, bitstring=fingerprint.bin,
                                molecule=molecule)
 
         @property
@@ -220,26 +216,41 @@ def load_tables(db, schema, user_entity=None, reindex=False):
 
         __cgr_core = CGRcore()
         __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_CGR,
-                                  min_length=FRAGMENT_MIN_CGR, max_length=FRAGMENT_MAX_CGR,
+                                  min_length=FRAGMENT_MIN_CGR, max_length=FRAGMENT_MAX_CGR, workpath=WORKPATH,
                                   cgr_dynbonds=FRAGMENT_DYNBOND_CGR, useformalcharge=True)
 
         def __init__(self, structure, user, conditions=None, special=None, fingerprints=None, fears=None,
                      mapless_fears=None, cgrs=None, substrats_fears=None, products_fears=None):
+            """
+            storing reaction in DB.
+            :param structure: CGRtools ReactionContainer
+            :param user: user entity
+            :param conditions: list of Json serializable Data (expected list of dicts)
+            :param special: Json serializable Data (expected dict)
+            :param fingerprints: reaction fingerprints for all existing in db molecules structures combinations.
+             for example: reaction A + B -> C. A has 2 structure in db, B - 3 and C - 1. number of combinations = 6.
+             order of fingerprints have to be same as in product(A[], B[], C[]) where X[] is ordered by id list of 
+             structures of molecules.
+            :param fears: fear strings of reaction. see fingerprints for details
+            :param mapless_fears: mapless fear strings of reaction. see fingerprints for details
+            :param cgrs: list of all possible CGRs of reaction. see fingerprints for details
+            :param substrats_fears: fears of structure substrats in same order as substrats molecules
+            :param products_fears: see substrats_fears
+            """
             new_mols, batch, fearset, s_fears = OrderedDict(), {}, set(), {}
             for i, f in (('substrats', substrats_fears), ('products', products_fears)):
                 tmp = f if f and len(f) == len(structure[i]) else [self.get_fear_string(x) for x in structure[i]]
                 fearset.update(tmp)
                 s_fears[i] = tmp
 
-            #  preload molecules entities. m.b. need refactoring if pony cache work incorrectly.
-            molecules = {x.id: x for x in select(x.molecule for x in MoleculeStructure if x.fear in fearset)}
+            # preload molecules entities. pony caching it.
+            list(select(x.molecule for x in MoleculeStructure if x.fear in fearset))
             # preload all molecules structures entities
-            molecule_structures, fear_structure, fear_molecule = {}, {}, {}
+            molecule_structures, fear_structure = {}, {}
             for ms in select(y for x in MoleculeStructure if x.fear in fearset
                              for y in MoleculeStructure if y.molecule == x.molecule):
                 if ms.fear in fearset:
                     fear_structure[ms.fear] = ms
-                    fear_molecule[ms.fear] = ms.molecule
                 else:
                     molecule_structures.setdefault(ms.molecule, []).append(ms)
 
@@ -249,12 +260,15 @@ def load_tables(db, schema, user_entity=None, reindex=False):
                     ms = fear_structure.get(f)
                     n = next(m_count)
                     if ms:
-                        m = fear_molecule[f]
                         mapping = self.match_structures(ms.structure, x)
-                        batch[n] = (m, is_p, mapping)
-                        all_combos[n] = [(x, ms)]
-                        all_combos[n].extend((relabel_nodes(s.structure, mapping), s)
-                                             for s in molecule_structures[m])
+                        batch[n] = (ms.molecule, is_p, mapping)
+
+                        tmp = [(x, ms)]
+                        if ms.molecule in molecule_structures:
+                            tmp.extend((relabel_nodes(x.structure, mapping), x)
+                                       for x in molecule_structures[ms.molecule])
+
+                        all_combos[n] = sorted(tmp, key=lambda x: x[1].id)
                     else:
                         new_mols[n] = (x, is_p, f)
 
@@ -277,23 +291,17 @@ def load_tables(db, schema, user_entity=None, reindex=False):
                         mapping = self.match_structures(m.structure, x)
 
                     batch[n] = (m, is_p, mapping)
-                    all_combos[n] = [(x, m.raw_edition)]
+                    all_combos[n] = [(x, m.last_edition)]
 
             combos = list(product(*[all_combos[x] for x in sorted(all_combos)]))
             combolen = len(combos)
             substratslen = len(structure['substrats'])
-            combo_structures = []
-
-            def get_combos():
-                if not combo_structures:
-                    combo_structures.extend(ReactionContainer(substrats=[s for s, _ in x[:substratslen]],
-                                                              products=[s for s, _ in x[substratslen:]])
-                                            for x in combos)
-                return combo_structures
+            combo_structures = [ReactionContainer(substrats=[s for s, _ in x[:substratslen]],
+                                                  products=[s for s, _ in x[substratslen:]]) for x in combos]
 
             if mapless_fears is None or len(mapless_fears) != combolen:
                 mapless_fears, merged = [], []
-                for cs in get_combos():
+                for cs in combo_structures:
                     mf, mgs = self.get_mapless_fear(cs, get_merged=True)
                     mapless_fears.append(mf)
                     merged.append(mgs)
@@ -304,13 +312,13 @@ def load_tables(db, schema, user_entity=None, reindex=False):
 
             if fears is None or len(fears) != combolen:
                 fears, cgrs = [], []
-                for x in merged or get_combos():
+                for x in merged or combo_structures:
                     f, c = self.get_fear(x, get_cgr=True, is_merged=is_merged)
                     fears.append(f)
                     cgrs.append(c)
 
             elif cgrs is None or len(cgrs) != combolen:
-                cgrs = [self.get_cgr(x, is_merged=is_merged) for x in merged or get_combos()]
+                cgrs = [self.get_cgr(x, is_merged=is_merged) for x in merged or combo_structures]
 
             if fingerprints is None or len(fingerprints) != combolen:
                 fingerprints = self.get_fingerprints(cgrs, is_cgr=True)
@@ -320,18 +328,20 @@ def load_tables(db, schema, user_entity=None, reindex=False):
             for m, is_p, mapping in (batch[x] for x in sorted(batch)):
                 MoleculeReaction(self, m, is_product=is_p, mapping=mapping)
 
-            for c, fp, f, mf in zip(combos, fingerprints, fears, mapless_fears):
-                ReactionIndex(self, [x for _, x in c], fp, f, mf)
+            for c, cs, cc, fp, f, mf in zip(combos, combo_structures, cgrs, fingerprints, fears, mapless_fears):
+                cl = [x for _, x in c]
+                ri = ReactionIndex(self, cl, fp, f, mf)
+                if all(x.last for x in cl):
+                    self.__cached_structure = cs
+                    self.__cached_cgr = cc
+                    self.__cached_reaction_index = ri
 
             if conditions:
-                Conditions(conditions, self, user)
+                for c in conditions:
+                    Conditions(c, self, user)
 
             if special:
                 self.special = special
-
-            #self.__cached_cgr = cgrs
-            #self.__cached_structure = structure
-            #self.__cached_bitstring = fingerprints
 
         @classmethod
         def get_cgr(cls, *args, **kwargs):
@@ -344,10 +354,7 @@ def load_tables(db, schema, user_entity=None, reindex=False):
         @classmethod
         def get_fingerprints(cls, structures, is_cgr=False):
             cgrs = structures if is_cgr else [cls.get_cgr(x) for x in structures]
-            workpath = mkdtemp(prefix='fps_', dir=WORKPATH)
-            cls.__fragmentor.set_work_path(workpath)
             f = cls.__fragmentor.get(cgrs)['X']
-            rmtree(workpath)
             return cls.descriptors_to_fingerprints(f)
 
         @classmethod
@@ -380,6 +387,7 @@ def load_tables(db, schema, user_entity=None, reindex=False):
 
         __cached_structure = None
         __cached_cgr = None
+        __cached_reaction_index = None
 
     class MoleculeReaction(db.Entity):
         _table_ = '%s_molecule_reaction' % schema if DEBUG else (schema, 'molecule_reaction')
@@ -395,7 +403,7 @@ def load_tables(db, schema, user_entity=None, reindex=False):
 
         @property
         def mapping(self):
-            return dict(self._mapping) if self.__mapping else None
+            return dict(self._mapping) if self._mapping else None
 
         @staticmethod
         def mapping_transform(mapping):
@@ -429,15 +437,13 @@ def load_tables(db, schema, user_entity=None, reindex=False):
     class Conditions(db.Entity, UserMixin):
         _table_ = '%s_conditions' % schema if DEBUG else (schema, 'conditions')
         id = PrimaryKey(int, auto=True)
-        date = Required(datetime)
+        date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
         data = Required(Json)
         reaction = Required('Reaction')
 
-        def __init__(self, data, reaction, user, date=None):
-            if date is None:
-                date = datetime.utcnow()
-            db.Entity.__init__(self, user_id=user.id, date=date, reaction=reaction, data=data)
+        def __init__(self, data, reaction, user):
+            db.Entity.__init__(self, user_id=user.id, reaction=reaction, data=data)
 
     class ReactionClass(db.Entity):
         _table_ = '%s_reaction_class' % schema if DEBUG else (schema, 'reaction_class')
