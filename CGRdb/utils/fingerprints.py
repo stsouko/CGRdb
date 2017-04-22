@@ -27,7 +27,7 @@ class Fingerprints(object):
         self.__size = size
         self.__bits = list(range(active_bits))
 
-    def get_fingerprints(self, df):
+    def get_fingerprints(self, df, bit_array=True):
         bits_map = {}
         for fragment in df.columns:
             b = BitArray(md5(fragment.encode()).digest())
@@ -40,8 +40,11 @@ class Fingerprints(object):
                 if v:
                     active_bits.update(bits_map[k])
 
-            fp = BitArray(2 ** self.__size)
-            fp.set(True, active_bits)
+            if bit_array:
+                fp = BitArray(2 ** self.__size)
+                fp.set(True, active_bits)
+            else:
+                fp = active_bits
             result.append(fp)
 
         return result

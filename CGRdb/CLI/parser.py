@@ -38,7 +38,6 @@ def search_common(parser):
 
 
 def similar_common(parser):
-    parser.add_argument("--rebuild", '-rb', action='store_true', help='Use this if want to rebuild your BallTree')
     parser.add_argument("--number", "-n", type=int, default=10, help='Number of objects, that you want to get')
 
 

@@ -26,8 +26,8 @@ from .. import Loader
 
 
 def similarity_search_core(**kwargs):
-    Loader.load_schemas(reindex=kwargs['rebuild'])
-    Molecule, Reaction, *_ = Loader.get_database(kwargs['database'])
+    Loader.load_schemas()
+    Molecule, Reaction = Loader.get_database(kwargs['database'])
 
     if kwargs['reaction']:
         output = RDFwrite(kwargs['output'])
