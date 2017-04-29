@@ -89,10 +89,10 @@ class FingerprintMixin(object):
     @classmethod
     def init_fingerprint(cls, fingerprint):
         if not isinstance(fingerprint, BitArray):
-            bit_set = set(fingerprint)
+            bit_set = list(fingerprint)
             fingerprint = cls.__list2bitarray(bit_set)
         else:
-            bit_set = set(fingerprint.findall([1]))
+            bit_set = list(fingerprint.findall([1]))
 
         return fingerprint, bit_set
 
