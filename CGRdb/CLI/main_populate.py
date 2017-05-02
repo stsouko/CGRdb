@@ -23,17 +23,18 @@ import sys
 from itertools import zip_longest, count
 from pony.orm import db_session
 from CGRtools.files.RDFrw import RDFread
-from CGRtools.CGRcore import CGRcore
 from ..utils.reaxys_data import Parser as ReaxysParser
+from ..models import UserADHOC
 from .. import Loader
 
 
-cgr_core = CGRcore()
 parsers = dict(reaxys=ReaxysParser)
 
 
 def populate_core(**kwargs):
     Loader.load_schemas()
+    Molecule, Reaction = Loader.get_database(kwargs['database'])
+
     inputdata = RDFread(kwargs['input'])
     data_parser = parsers[kwargs['parser']]()
 
@@ -52,58 +53,55 @@ def populate_core(**kwargs):
             if r is None:
                 break
 
-            next(raw_data)
+            rnum = next(raw_data)
             try:
-                rs, cgr = Reaction.get_fear(r, get_cgr=True)
+                ml_fear_str, mr = Reaction.get_mapless_fear(r, get_merged=True)
+                fear_str, cgr = Reaction.get_fear(mr, is_merged=True, get_cgr=True)
                 rms = dict(substrats=[], products=[])
-                merged = cgr_core.merge_mols(r)
-                ml_fear = '%s>>%s' % (Molecule.get_fear(merged['substrats']), Molecule.get_fear(merged['products']))
+
                 for i in ('substrats', 'products'):
                     for m in r[i]:
                         ms = Molecule.get_fear(m)
                         rms[i].append(ms)
-                        molecules.append((m, ms))
+                        molecules.append((m, ms, rnum))
 
                 lrms.append(rms)
-                cleaned.append((r, rs, ml_fear, cgr))
+                cleaned.append((r, fear_str, ml_fear_str, rnum, cgr))
                 next(clean_data)
             except:
                 pass
 
-        rfps = Reaction.get_fingerprints([x for *_, x in cleaned], is_cgr=True)
-        mfps = Molecule.get_fingerprints([m for m, _ in molecules])
+        rfps = Reaction.get_fingerprints([x for *_, x in cleaned], is_cgr=True, bit_array=False)
+        mfps = Molecule.get_fingerprints([m for m, *_ in molecules], bit_array=False)
 
         with db_session:
-            user = User[1]
-            for_analyse = []
+            user = UserADHOC[kwargs['user']]
+            fuck_opt = []
+            for (m, ms, rnum), mf in zip(molecules, mfps):
+                mol_db = Molecule.find_structure(ms, is_fear=True)
+                if not mol_db:
+                    Molecule(m, user, fingerprint=mf, fear=ms)
+                elif mol_db.structures.count() > 1:
+                    fuck_opt.append(rnum)
 
-            for (m, ms), mf in zip(molecules, mfps):
-                if not Molecule.exists(fear=ms):
-                    Molecule(m, user, fingerprint=mf, fear_string=ms)
-
-            for (r, rs, ml_fear, cgr), r_fp, rms in zip(cleaned, rfps, lrms):
-                reaction = Reaction.get(fear=rs)
+            for (r, rs, ml_fear, rnum, cgr), r_fp, rms in zip(cleaned, rfps, lrms):
+                reaction = Reaction.find_structure(rs, is_fear=True)
                 meta = data_parser.parse(r['meta'])
-                media = set()
+
                 if not reaction:
                     next(added_data)
-                    reaction = Reaction(r, user, special=dict(rx_id=meta['rx_id']),
-                                        fingerprint=r_fp, fear_string=rs, cgr=cgr, mapless_fear_string=ml_fear,
-                                        substrats_fears=rms['substrats'], products_fears=rms['products'])
-                    for c in meta['rxd']:
-                        Conditions(user=user, data=c, reaction=reaction)
-                        media.update(c['media'])
-                    for_analyse.append(reaction)
+                    if rnum in fuck_opt:  # if molecules has multiple forms don't use precomputed fields. мне влом.
+                        Reaction(r, user, special=dict(rx_id=meta['rx_id']), conditions=meta['rxd'],
+                                 substrats_fears=rms['substrats'], products_fears=rms['products'])
+                    else:
+                        Reaction(r, user, special=dict(rx_id=meta['rx_id']), conditions=meta['rxd'],
+                                 fingerprints=[r_fp], fears=[rs], cgrs=[cgr], mapless_fears=[ml_fear],
+                                 substrats_fears=rms['substrats'], products_fears=rms['products'])
+
                 else:
                     next(upd_data)
                     for c in meta['rxd']:
-                        if not Conditions.exists(data=c, reaction=reaction):
-                            Conditions(user=user, data=c, reaction=reaction)
-                            media.update(c['media'])
-
-                for m in media:
-                    if not RawMedia.exists(name=m):
-                        RawMedia(name=m)
+                        reaction.add_conditions(c, user)
 
     print('Data processed\nRaw: %d, Clean: %d, Added: %d, Updated: %d' % next(zip(raw_data, clean_data,
                                                                                   added_data, upd_data)))

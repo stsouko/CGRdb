@@ -42,7 +42,7 @@ class Loader:
                 else:
                     x.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
 
-                x.generate_mapping(create_tables=True)
+                x.generate_mapping(create_tables=False)
 
     @classmethod
     def list_databases(cls):

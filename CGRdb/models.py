@@ -181,12 +181,12 @@ def load_tables(db, schema, user_entity=None):
             self.__raw = structure
 
         @classmethod
-        def structure_exists(cls, structure):
-            return MoleculeStructure.exists(fear=cls.get_fear(structure))
+        def structure_exists(cls, structure, is_fear=False):
+            return MoleculeStructure.exists(fear=structure if is_fear else cls.get_fear(structure))
 
         @classmethod
-        def find_structure(cls, structure):
-            ms = MoleculeStructure.get(fear=cls.get_fear(structure))
+        def find_structure(cls, structure, is_fear=False):
+            ms = MoleculeStructure.get(fear=structure if is_fear else cls.get_fear(structure))
             if ms:
                 molecule = ms.molecule
                 molecule.raw_edition = ms
@@ -196,13 +196,14 @@ def load_tables(db, schema, user_entity=None):
 
         @classmethod
         def find_substructures(cls, structure):
-            pass
+            bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
+            sql_select = raw_sql("x.bit_array %%%% '%s'" % bit_set)
 
         @classmethod
         def find_similar(cls, structure, number=10):
             bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
-            sql_select = raw_sql("x.bit_array %%%% '%s'" % bit_set)
-            sql_order = raw_sql("smlar(x.bit_array, '%s', 'N.i / (N.a + N.b - N.i)') DESC" % bit_set)
+            sql_select = raw_sql("x.bit_array %%%% '%s'::int2[]" % bit_set)
+            sql_order = raw_sql("smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') DESC" % bit_set)
 
             mss = list(MoleculeStructure.select(lambda x: sql_select).order_by(sql_order).limit(number))
             mss_id = [m.molecule.id for m in mss]
@@ -415,22 +416,22 @@ def load_tables(db, schema, user_entity=None):
             return self.__cached_structure
 
         @classmethod
-        def mapless_structure_exists(cls, structure):
-            return ReactionIndex.exists(mapless_fear=cls.get_mapless_fear(structure))
+        def mapless_structure_exists(cls, structure, is_fear=False):
+            return ReactionIndex.exists(mapless_fear=structure if is_fear else cls.get_mapless_fear(structure))
 
         @classmethod
-        def structure_exists(cls, structure):
-            return ReactionIndex.exists(fear=cls.get_fear(structure))
+        def structure_exists(cls, structure, is_fear=False):
+            return ReactionIndex.exists(fear=structure if is_fear else cls.get_fear(structure))
 
         @classmethod
-        def find_mapless_structure(cls, structure):
-            ri = ReactionIndex.get(mapless_fear=cls.get_mapless_fear(structure))
+        def find_mapless_structure(cls, structure, is_fear=False):
+            ri = ReactionIndex.get(mapless_fear=structure if is_fear else cls.get_mapless_fear(structure))
             if ri:
                 return ri.reaction
 
         @classmethod
-        def find_structure(cls, structure):
-            ri = ReactionIndex.get(fear=cls.get_fear(structure))
+        def find_structure(cls, structure, is_fear=False):
+            ri = ReactionIndex.get(fear=structure if is_fear else cls.get_fear(structure))
             if ri:
                 return ri.reaction
 
@@ -447,6 +448,9 @@ def load_tables(db, schema, user_entity=None):
             r_id = list(select(x.reaction.id for x in ReactionIndex if sql_select).order_by(sql_order).limit(number))
             rs = {x.id: x for x in Reaction.select(lambda x: x.id in r_id)}
             return [rs[x] for x in r_id]
+
+        def add_conditions(self, data, user):
+            ReactionConditions(data, self, user)
 
         __cached_structure = None
         __cached_cgr = None

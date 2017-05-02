@@ -81,6 +81,8 @@ def populate(subparsers):
     parser.add_argument('--parser', '-p', default='reaxys', choices=['reaxys'], type=str, help='Data Format')
     parser.add_argument('--chunk', '-c', default=100, type=int, help='Chunks size')
     parser.add_argument('--user', '-u', default=1, type=int, help='User id')
+    parser.add_argument("--database", '-db', type=str, default=DB_DATA_LIST[0], choices=DB_DATA_LIST,
+                        help='Database name for populate')
     parser.set_defaults(func=populate_core)
 
 

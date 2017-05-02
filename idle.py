@@ -44,22 +44,22 @@ def to_rdf(structures):
     with StringIO() as f:
         for x in structures if isinstance(structures, list) else [structures]:
             RDFwrite(f).write(x)
-    return f.getvalue()
+        return f.getvalue()
 
 
 def to_sdf(structures):
     with StringIO() as f:
         for x in structures if isinstance(structures, list) else [structures]:
             SDFwrite(f).write(x)
-    return f.getvalue()
+        return f.getvalue()
 
 
 def view_sdf(structures):
-    sp.call(['/opt/ChemAxon/JChem/bin/mview', to_sdf(structures).encode()])
+    sp.call(['/home/stsouko/ChemAxon/JChem/bin/mview', to_sdf(structures).encode()])
 
 
 def view_rdf(structures):
-    sp.call(['/opt/ChemAxon/JChem/bin/mview', to_rdf(structures).encode()])
+    sp.call(['/home/stsouko/ChemAxon/JChem/bin/mview', to_rdf(structures).encode()])
 
 
 def get_reaction_fear(structure):
