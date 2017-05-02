@@ -195,9 +195,13 @@ def load_tables(db, schema, user_entity=None):
                 return molecule
 
         @classmethod
-        def find_substructures(cls, structure):
+        def find_substructures(cls, structure, number=10):
             bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
-            sql_select = raw_sql("x.bit_array %%%% '%s'" % bit_set)
+            sql_select = raw_sql("x.bit_array @> '%s'::int2[]" % bit_set)
+
+            mss = [x for x in MoleculeStructure.select(lambda x: sql_select).limit(number)
+                   if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
+            return cls.__get_structure_molecule(mss)
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -206,10 +210,14 @@ def load_tables(db, schema, user_entity=None):
             sql_order = raw_sql("smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') DESC" % bit_set)
 
             mss = list(MoleculeStructure.select(lambda x: sql_select).order_by(sql_order).limit(number))
-            mss_id = [m.molecule.id for m in mss]
+            return cls.__get_structure_molecule(mss)
+
+        @staticmethod
+        def __get_structure_molecule(molecule_structures):
+            mss_id = [m.molecule.id for m in molecule_structures]
             list(Molecule.select(lambda x: x.id in mss_id))
             out = []
-            for ms in mss:
+            for ms in molecule_structures:
                 molecule = ms.molecule
                 molecule.raw_edition = ms
                 if ms.last:
@@ -436,8 +444,12 @@ def load_tables(db, schema, user_entity=None):
                 return ri.reaction
 
         @classmethod
-        def find_substructures(cls, structure):
-            pass
+        def find_substructures(cls, structure, number=10):
+            bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
+            sql_select = raw_sql("x.bit_array @> '%s'::int2[]" % bit_set)
+
+            return [x for x in select(x.reaction for x in ReactionIndex if sql_select).limit(number)
+                    if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
 
         @classmethod
         def find_similar(cls, structure, number=10):

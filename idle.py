@@ -21,7 +21,6 @@
 #  MA 02110-1301, USA.
 #
 from pony.orm import commit, left_join, db_session, select, flush
-from CGRdb.models import db
 from CGRtools.files.SDFrw import SDFread, SDFwrite
 from CGRtools.files.RDFrw import RDFread, RDFwrite
 from CGRtools.FEAR import FEAR
