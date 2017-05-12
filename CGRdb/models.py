@@ -217,12 +217,20 @@ def load_tables(db, schema, user_entity=None):
             mss_id = [m.molecule.id for m in molecule_structures]
             list(Molecule.select(lambda x: x.id in mss_id))
             out = []
+            not_last = []
             for ms in molecule_structures:
                 molecule = ms.molecule
                 molecule.raw_edition = ms
                 if ms.last:
                     molecule.last_edition = ms
+                else:
+                    not_last.append(molecule)
+
                 out.append(molecule)
+
+            if not_last:
+                for ms in MoleculeStructure.select(lambda x: x.molecule in not_last):
+                    ms.molecule.last_edition = ms
 
             return out
 
