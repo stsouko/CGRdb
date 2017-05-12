@@ -225,12 +225,12 @@ def load_tables(db, schema, user_entity=None):
                     molecule.last_edition = ms
                 else:
                     not_last.append(molecule)
-                for m in not_last:
-                    m.last_edition = ms
 
                 out.append(molecule)
-            out = list(molecule.order_by(mss_id))
-            out.sort(key=mss_id)
+
+            if not_last:
+                for ms in MoleculeStructure.select(lambda x: x.molecule in not_last):
+                    ms.molecule.last_edition = ms
 
             return out
 
