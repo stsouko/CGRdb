@@ -420,7 +420,7 @@ def load_tables(db, schema, user_entity=None):
             if self.__cached_structure is None:
                 mrs = list(self.molecules.order_by(lambda x: x.id))
                 mss = {x.molecule.id: x for x in
-                       select(ms for ms in db.MoleculeStructure for mr in db.MoleculeReaction
+                       select(ms for ms in MoleculeStructure for mr in MoleculeReaction
                               if ms.molecule == mr.molecule and mr.reaction == self and ms.last)}
 
                 r = ReactionContainer()
@@ -430,6 +430,10 @@ def load_tables(db, schema, user_entity=None):
                         relabel_nodes(ms.structure, mr.mapping) if mr.mapping else ms.structure)
                 self.__cached_structure = r
             return self.__cached_structure
+
+        @structure.setter
+        def structure(self, structure):
+            self.__cached_structure = structure
 
         @classmethod
         def mapless_structure_exists(cls, structure, is_fear=False):
@@ -456,8 +460,9 @@ def load_tables(db, schema, user_entity=None):
             bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
             sql_select = raw_sql("x.bit_array @> '%s'::int2[]" % bit_set)
 
-            return [x for x in select(x.reaction for x in ReactionIndex if sql_select).limit(number)
-                    if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
+            reactions = cls.__get_structure_reaction(list(select(x.reaction for x in ReactionIndex
+                                                                 if sql_select).limit(number)))
+            return [x for x in reactions if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -467,7 +472,23 @@ def load_tables(db, schema, user_entity=None):
 
             r_id = list(select(x.reaction.id for x in ReactionIndex if sql_select).order_by(sql_order).limit(number))
             rs = {x.id: x for x in Reaction.select(lambda x: x.id in r_id)}
-            return [rs[x] for x in r_id]
+            return cls.__get_structure_reaction([rs[x] for x in r_id])
+
+        @staticmethod
+        def __get_structure_reaction(reactions):
+            mrs = list(MoleculeReaction.select().order_by(lambda x: x.id))
+            mss = {x.molecule.id: x for x in
+                   select(ms for ms in MoleculeStructure for mr in MoleculeReaction
+                          if ms.molecule == mr.molecule and mr.reaction in reactions and ms.last)}
+
+            rc = {x.id: ReactionContainer() for x in reactions}
+            for mr in mrs:
+                ms = mss[mr.molecule.id]
+                rc[mr.reaction.id]['products' if mr.product else 'substrats'].append(
+                    relabel_nodes(ms.structure, mr.mapping) if mr.mapping else ms.structure)
+            for r in reactions:
+                r.structure = rc[r.id]
+            return reactions
 
         def add_conditions(self, data, user):
             ReactionConditions(data, self, user)
