@@ -174,11 +174,13 @@ def load_tables(db, schema, user_entity=None):
 
         @last_edition.setter
         def last_edition(self, structure):
-            self.__last = structure
+            if self.__last is None:
+                self.__last = structure
 
         @raw_edition.setter
         def raw_edition(self, structure):
-            self.__raw = structure
+            if self.__raw is None:
+                self.__raw = structure
 
         @classmethod
         def structure_exists(cls, structure, is_fear=False):
@@ -189,44 +191,72 @@ def load_tables(db, schema, user_entity=None):
             ms = MoleculeStructure.get(fear=structure if is_fear else cls.get_fear(structure))
             if ms:
                 molecule = ms.molecule
+                # set query structure as raw
                 molecule.raw_edition = ms
-                if ms.last:
-                    molecule.last_edition = ms
+                # preload canonical structure
+                molecule.last_edition = ms if ms.last else molecule.structures.filter(lambda x: x.last).first()
                 return molecule
 
         @classmethod
         def find_substructures(cls, structure, number=10):
+            """
+            graph substructure search
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit of returned results. not guarantee returning of all available data. 
+            set bigger value for this
+            :return: list of Molecule entities
+            """
             bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
             sql_select = raw_sql("x.bit_array @> '%s'::int2[]" % bit_set)
+            sql_order = raw_sql("smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') DESC" % bit_set)
 
-            mss = [x for x in MoleculeStructure.select(lambda x: sql_select).limit(number)
-                   if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
-            return cls.__get_structure_molecule(mss)
+            mss = list(MoleculeStructure.select(lambda x: sql_select).order_by(sql_order).limit(number * 2))
+            return [x for x in cls.__get_molecules(mss, number)
+                    if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
 
         @classmethod
         def find_similar(cls, structure, number=10):
+            """
+            graph similar search
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit of returned results. not guarantee returning of all available data. 
+            set bigger value for this
+            :return: list of Molecule entities
+            """
             bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
             sql_select = raw_sql("x.bit_array %%%% '%s'::int2[]" % bit_set)
             sql_order = raw_sql("smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') DESC" % bit_set)
 
-            mss = list(MoleculeStructure.select(lambda x: sql_select).order_by(sql_order).limit(number))
-            return cls.__get_structure_molecule(mss)
+            mss = list(MoleculeStructure.select(lambda x: sql_select).order_by(sql_order).limit(number * 2))
+            return cls.__get_molecules(mss, number)
 
         @staticmethod
-        def __get_structure_molecule(molecule_structures):
-            mss_id = [m.molecule.id for m in molecule_structures]
+        def __get_molecules(molecule_structures, number):
+            """
+            extract Molecule entities from MoleculeStructure entities.
+            set to Molecule entities raw_structure property's given MoleculeStructure entities 
+            and preload canonical MoleculeStructure entities
+            :param molecule_structures: list of MoleculeStructure entities 
+            :return: Molecule entities
+            """
+            mss_id = {m.molecule.id for m in molecule_structures}
             list(Molecule.select(lambda x: x.id in mss_id))
             out = []
             not_last = []
             for ms in molecule_structures:
+                if len(out) == number:
+                    break  # limit of results len to given number
+
                 molecule = ms.molecule
+                if molecule in out:
+                    continue
+
+                out.append(molecule)
                 molecule.raw_edition = ms
                 if ms.last:
                     molecule.last_edition = ms
                 else:
                     not_last.append(molecule)
-
-                out.append(molecule)
 
             if not_last:
                 for ms in MoleculeStructure.select(lambda x: x.molecule in not_last and x.last):
@@ -457,38 +487,71 @@ def load_tables(db, schema, user_entity=None):
 
         @classmethod
         def find_substructures(cls, structure, number=10):
+            """
+            cgr substructure search
+            :param structure: CGRtools ReactionContainer
+            :param number: top limit of returned results. not guarantee returning of all available data. 
+            set bigger value for this
+            :return: list of Reaction entities
+            """
             bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
             sql_select = raw_sql("x.bit_array @> '%s'::int2[]" % bit_set)
+            sql_order = raw_sql("smlar(x.bit_array, '%s', 'N.i / (N.a + N.b - N.i)') DESC" % bit_set)
 
-            reactions = cls.__get_structure_reaction(list(select(x.reaction for x in ReactionIndex
-                                                                 if sql_select).limit(number)))
-            return [x for x in reactions if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
+            ris = list(ReactionIndex.select(lambda x: sql_select).order_by(sql_order).limit(number * 2))
+            return [x for x in cls.__get_reactions(ris, number)
+                    if cls.get_cgr_matcher(x.cgr, cls.get_cgr(structure)).subgraph_is_isomorphic()]
 
         @classmethod
         def find_similar(cls, structure, number=10):
+            """
+            cgr similar search
+            :param structure: CGRtools ReactionContainer
+            :param number: top limit of returned results. not guarantee returning of all available data. 
+            set bigger value for this
+            :return: list of Reaction entities
+            """
             bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
             sql_select = raw_sql("x.bit_array %%%% '%s'" % bit_set)
             sql_order = raw_sql("smlar(x.bit_array, '%s', 'N.i / (N.a + N.b - N.i)') DESC" % bit_set)
 
-            r_id = list(select(x.reaction.id for x in ReactionIndex if sql_select).order_by(sql_order).limit(number))
-            rs = {x.id: x for x in Reaction.select(lambda x: x.id in r_id)}
-            return cls.__get_structure_reaction([rs[x] for x in r_id])
+            ris = list(ReactionIndex.select(lambda x: sql_select).order_by(sql_order).limit(number * 2))
+            return cls.__get_reactions(ris, number)
 
         @staticmethod
-        def __get_structure_reaction(reactions):
-            mrs = list(MoleculeReaction.select().order_by(lambda x: x.id))
+        def __get_reactions(reaction_indexes, number):
+            """
+            extract Reaction entities from ReactionIndex entities.
+            cache reaction structure in Reaction entities
+            :param reaction_indexes: list of ReactionIndex entities 
+            :return: Reaction entities
+            """
+            ris = []
+            for ri in reaction_indexes:
+                if len(ris) == number:
+                    break
+                if ri not in ris:
+                    ris.append(ri.reaction.id)
+
+            rs = {x.id: x for x in Reaction.select(lambda x: x.id in ris)}
+            mrs = list(MoleculeReaction.select(lambda x: x.reaction.id in ris).order_by(lambda x: x.id))
             mss = {x.molecule.id: x for x in
                    select(ms for ms in MoleculeStructure for mr in MoleculeReaction
-                          if ms.molecule == mr.molecule and mr.reaction in reactions and ms.last)}
+                          if ms.molecule == mr.molecule and mr.reaction.id in ris and ms.last)}
 
-            rc = {x.id: ReactionContainer() for x in reactions}
+            rcs = {x: ReactionContainer() for x in ris}
             for mr in mrs:
                 ms = mss[mr.molecule.id]
-                rc[mr.reaction.id]['products' if mr.product else 'substrats'].append(
+                rcs[mr.reaction.id]['products' if mr.product else 'substrats'].append(
                     relabel_nodes(ms.structure, mr.mapping) if mr.mapping else ms.structure)
-            for r in reactions:
-                r.structure = rc[r.id]
-            return reactions
+
+            out = []
+            for ri in ris:
+                r = rs[ri]
+                r.structure = rcs[ri]
+                out.append(r)
+
+            return out
 
         def add_conditions(self, data, user):
             ReactionConditions(data, self, user)
