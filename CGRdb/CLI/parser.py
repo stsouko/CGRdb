@@ -78,7 +78,7 @@ def populate(subparsers):
     parser = subparsers.add_parser('populate', help='This utility fills database with new entities',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--input', '-i', default='input.rdf', type=FileType(), help='RDF inputfile')
-    parser.add_argument('--parser', '-p', default='reaxys', choices=['reaxys'], type=str, help='Data Format')
+    parser.add_argument('--parser', '-p', default='none', choices=['reaxys', 'none'], type=str, help='Data Format')
     parser.add_argument('--chunk', '-c', default=100, type=int, help='Chunks size')
     parser.add_argument('--user', '-u', default=1, type=int, help='User id')
     parser.add_argument("--database", '-db', type=str, default=DB_DATA_LIST[0], choices=DB_DATA_LIST,

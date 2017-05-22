@@ -28,7 +28,13 @@ from ..models import UserADHOC
 from .. import Loader
 
 
-parsers = dict(reaxys=ReaxysParser)
+class NoneParser:
+    @staticmethod
+    def parse(_):
+        return dict(rxd=None)
+
+
+parsers = dict(reaxys=ReaxysParser, none=NoneParser)
 
 
 def populate_core(**kwargs):
@@ -91,16 +97,16 @@ def populate_core(**kwargs):
                 if not reaction:
                     next(added_data)
                     if rnum in fuck_opt:  # if molecules has multiple forms don't use precomputed fields. мне влом.
-                        Reaction(r, user, special=dict(rx_id=meta['rx_id']), conditions=meta['rxd'],
+                        Reaction(r, user, conditions=meta.pop('rxd'), special=meta,
                                  substrats_fears=rms['substrats'], products_fears=rms['products'])
                     else:
-                        Reaction(r, user, special=dict(rx_id=meta['rx_id']), conditions=meta['rxd'],
+                        Reaction(r, user, conditions=meta.pop('rxd'), special=meta,
                                  fingerprints=[r_fp], fears=[rs], cgrs=[cgr], mapless_fears=[ml_fear],
                                  substrats_fears=rms['substrats'], products_fears=rms['products'])
 
                 else:
                     next(upd_data)
-                    for c in meta['rxd']:
+                    for c in meta['rxd'] or []:
                         reaction.add_conditions(c, user)
 
     print('Data processed\nRaw: %d, Clean: %d, Added: %d, Updated: %d' % next(zip(raw_data, clean_data,
