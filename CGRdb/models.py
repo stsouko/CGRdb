@@ -29,7 +29,7 @@ from datetime import datetime
 from itertools import count, product
 from networkx import relabel_nodes
 from networkx.readwrite.json_graph import node_link_graph, node_link_data
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, db_session, select, raw_sql
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, db_session, select, raw_sql, left_join
 from .config import (FP_SIZE, FP_ACTIVE_BITS, FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO,
                      FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR,
                      FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL, WORKPATH)
@@ -133,7 +133,7 @@ def load_tables(db, schema, user_entity=None):
                 fingerprint = self.get_fingerprints([structure], bit_array=False)[0]
 
             db.Entity.__init__(self, user_id=user.id)
-            self.__raw = self.__last = MoleculeStructure(self, structure, user, fingerprint, fear)
+            self.__last = MoleculeStructure(self, structure, user, fingerprint, fear)
 
         @classmethod
         def get_fear(cls, structure):
@@ -169,7 +169,7 @@ def load_tables(db, schema, user_entity=None):
         @property
         def raw_edition(self):
             if self.__raw is None:
-                raise Exception('Entity loaded incorrectly')
+                raise Exception('Available in entities from queries results only')
             return self.__raw
 
         @last_edition.setter
@@ -191,7 +191,6 @@ def load_tables(db, schema, user_entity=None):
             ms = MoleculeStructure.get(fear=structure if is_fear else cls.get_fear(structure))
             if ms:
                 molecule = ms.molecule
-                molecule.raw_edition = ms  # set query structure as raw
                 if ms.last:  # save if structure is canonical
                     molecule.last_edition = ms
 
@@ -204,14 +203,12 @@ def load_tables(db, schema, user_entity=None):
             :param structure: CGRtools MoleculeContainer
             :param number: top limit of returned results. not guarantee returning of all available data. 
             set bigger value for this
-            :return: list of Molecule entities
+            :return: list of Molecule entities, list of Tanimoto indexes
             """
-            bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
-            sql_select = "x.bit_array @> '%s'::int2[]" % bit_set
-            sql_order = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') DESC" % bit_set
-
-            return [x for x in cls.__get_molecules(sql_select, sql_order, number)
-                    if cls.get_cgr_matcher(x.structure, structure).subgraph_is_isomorphic()]
+            tmp = [(x, y) for x, y in zip(*cls.__get_molecules(cls.get_fingerprints([structure], bit_array=False)[0],
+                                                               '@>', number, set_raw=True))
+                   if cls.get_cgr_matcher(x.structure_raw, structure).subgraph_is_isomorphic()]
+            return [x for x, _ in tmp], [x for _, x in tmp]
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -220,50 +217,57 @@ def load_tables(db, schema, user_entity=None):
             :param structure: CGRtools MoleculeContainer
             :param number: top limit of returned results. not guarantee returning of all available data. 
             set bigger value for this
-            :return: list of Molecule entities
+            :return: list of Molecule entities, list of Tanimoto indexes
             """
-            bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
-            sql_select = "x.bit_array %%%% '%s'::int2[]" % bit_set
-            sql_order = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') DESC" % bit_set
-
-            return cls.__get_molecules(sql_select, sql_order, number)
+            return cls.__get_molecules(cls.get_fingerprints([structure], bit_array=False)[0], '%%', number)
 
         @staticmethod
-        def __get_molecules(sql_select, sql_order, number):
+        def __get_molecules(bit_set, operator, number, set_raw=False):
             """
             find Molecule entities from MoleculeStructure entities.
             set to Molecule entities raw_structure property's found MoleculeStructure entities 
             and preload canonical MoleculeStructure entities 
-            :param sql_select: raw sql query string
-            :param sql_order: raw sql order string
+            :param bit_set: fingerprint as a bits set
+            :param operator: raw sql operator
             :return: Molecule entities
             """
-            mss = list(MoleculeStructure.select(lambda x: raw_sql(sql_select)).order_by(raw_sql(sql_order)).
-                       limit(number * 2))
-            mis = {m.molecule.id for m in mss}
-
-            list(Molecule.select(lambda x: x.id in mis))  # preload Molecule entities
-            out, not_last = [], []
-            for ms in mss:
-                if len(out) == number:
+            sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
+            sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
+            mis, sts, sis = [], [], []
+            for mi, si, st in select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in MoleculeStructure
+                                     if raw_sql(sql_select)).order_by(raw_sql('T DESC')).limit(number * 2):
+                if len(mis) == number:
                     break  # limit of results len to given number
+                if mi not in mis:
+                    mis.append(mi)
+                    sis.append(si)
+                    sts.append(st)
 
-                molecule = ms.molecule
-                if molecule in out:
-                    continue
+            ms = {x.id: x for x in Molecule.select(lambda x: x.id in mis)}  # preload Molecule entities
+            if set_raw:
+                ss = {x.molecule.id: x for x in MoleculeStructure.select(lambda x: x.id in sis)}
+                not_last = []
+            else:
+                ss = {x.molecule.id: x for x in MoleculeStructure.select(lambda x: x.molecule.id in mis and x.last)}
+                not_last = False
 
-                out.append(molecule)
-                molecule.raw_edition = ms
-                if ms.last:
-                    molecule.last_edition = ms
+            for mi in mis:
+                molecule = ms[mi]
+                structure = ss[mi]
+                if set_raw:
+                    molecule.raw_edition = structure
+                    if structure.last:
+                        molecule.last_edition = structure
+                    else:
+                        not_last.append(mi)
                 else:
-                    not_last.append(molecule)
+                    molecule.last_edition = structure
 
             if not_last:
-                for ms in MoleculeStructure.select(lambda x: x.molecule in not_last and x.last):
-                    ms.molecule.last_edition = ms
+                for structure in MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
+                    ms[structure.molecule.id].last_edition = structure
 
-            return out
+            return [ms[x] for x in mis], sts
 
         __last = None
         __raw = None
@@ -318,7 +322,7 @@ def load_tables(db, schema, user_entity=None):
                     mf, mgs = self.get_mapless_fear(cs, get_merged=True)
                     mapless_fears.append(mf)
                     merged.append(mgs)
-                    is_merged = True
+                is_merged = True
             else:
                 merged = None
                 is_merged = False
@@ -344,7 +348,7 @@ def load_tables(db, schema, user_entity=None):
             for c, cs, cc, fp, f, mf in zip(combos, combo_structures, cgrs, fingerprints, fears, mapless_fears):
                 cl = [x for _, x in c]
                 ReactionIndex(self, cl, fp, f, mf)
-                if all(x.last for x in cl):
+                if self.__cached_structure is None and all(x.last for x in cl):
                     self.__cached_structure = cs
                     self.__cached_cgr = cc
 
@@ -447,6 +451,12 @@ def load_tables(db, schema, user_entity=None):
             return self.__cached_cgr
 
         @property
+        def cgrs_raw(self):
+            if self.__cached_cgrs_raw is None:
+                self.__cached_cgrs_raw = [self.get_cgr(x) for x in self.structures_raw]
+            return self.__cached_cgrs_raw
+
+        @property
         def structure(self):
             if self.__cached_structure is None:
                 mrs = list(self.molecules.order_by(lambda x: x.id))
@@ -462,9 +472,19 @@ def load_tables(db, schema, user_entity=None):
                 self.__cached_structure = r
             return self.__cached_structure
 
+        @property
+        def structures_raw(self):
+            if self.__cached_structures_raw is None:
+                raise Exception('Available in entities from queries results only')
+            return self.__cached_structures_raw
+
         @structure.setter
         def structure(self, structure):
             self.__cached_structure = structure
+
+        @structures_raw.setter
+        def structures_raw(self, structure):
+            self.__cached_structures_raw = structure
 
         @classmethod
         def mapless_structure_exists(cls, structure, is_fear=False):
@@ -493,15 +513,13 @@ def load_tables(db, schema, user_entity=None):
             :param structure: CGRtools ReactionContainer
             :param number: top limit of returned results. not guarantee returning of all available data. 
             set bigger value for this
-            :return: list of Reaction entities
+            :return: list of Reaction entities, list of Tanimoto indexes
             """
-            bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
-            sql_select = "x.bit_array @> '%s'::int2[]" % bit_set
-            sql_order = "smlar(x.bit_array, '%s', 'N.i / (N.a + N.b - N.i)') DESC" % bit_set
             cgr = cls.get_cgr(structure)
-
-            return [x for x in cls.__get_reactions(sql_select, sql_order, number)
-                    if cls.get_cgr_matcher(x.cgr, cgr).subgraph_is_isomorphic()]
+            tmp = [(x, y) for x, y in zip(*cls.__get_reactions(cls.get_fingerprints([structure], bit_array=False)[0],
+                                                               '@>', number, set_raw=True))
+                   if any(cls.get_cgr_matcher(rs, cgr).subgraph_is_isomorphic() for rs in x.cgrs_raw)]
+            return [x for x, _ in tmp], [x for _, x in tmp]
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -510,36 +528,69 @@ def load_tables(db, schema, user_entity=None):
             :param structure: CGRtools ReactionContainer
             :param number: top limit of returned results. not guarantee returning of all available data. 
             set bigger value for this
-            :return: list of Reaction entities
+            :return: list of Reaction entities, list of Tanimoto indexes
             """
-            bit_set = cls.get_fingerprints([structure], bit_array=False)[0]
-            sql_select = "x.bit_array %%%% '%s'" % bit_set
-            sql_order = "smlar(x.bit_array, '%s', 'N.i / (N.a + N.b - N.i)') DESC" % bit_set
-
-            return cls.__get_reactions(sql_select, sql_order, number)
+            return cls.__get_reactions(cls.get_fingerprints([structure], bit_array=False)[0], '%%', number)
 
         @staticmethod
-        def __get_reactions(sql_select, sql_order, number):
+        def __get_reactions(bit_set, operator, number, set_raw=False):
             """
             extract Reaction entities from ReactionIndex entities.
             cache reaction structure in Reaction entities
-            :param sql_select: raw sql query string
-            :param sql_order: raw sql order string
+            :param bit_set: fingerprint as a bits set
+            :param operator: raw sql operator
             :return: Reaction entities
             """
-            ris = []
-            for ri in select(x.reaction.id for x in ReactionIndex
-                             if raw_sql(sql_select)).order_by(raw_sql(sql_order)).limit(number * 2):
+            sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
+            sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
+            ris, its, iis = [], [], []
+            for ri, rt, ii in select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in ReactionIndex
+                                     if raw_sql(sql_select)).order_by(raw_sql('T DESC')).limit(number * 2):
                 if len(ris) == number:
                     break
                 if ri not in ris:
                     ris.append(ri)
+                    its.append(rt)
+                    iis.append(ii)
 
             rs = {x.id: x for x in Reaction.select(lambda x: x.id in ris)}
             mrs = list(MoleculeReaction.select(lambda x: x.reaction.id in ris).order_by(lambda x: x.id))
-            mss = {x.molecule.id: x for x in
-                   select(ms for ms in MoleculeStructure for mr in MoleculeReaction
-                          if ms.molecule == mr.molecule and mr.reaction.id in ris and ms.last)}
+
+            if set_raw:
+                rsr, sis = {}, set()
+                for si, ri in left_join((x.structures.id, x.reaction.id) for x in ReactionIndex if x.id in iis):
+                    sis.add(si)
+                    rsr.setdefault(ri, []).append(si)
+
+                mss, mis = {}, {}
+                for structure in MoleculeStructure.select(lambda x: x.id in sis):
+                    mis.setdefault(structure.molecule.id, []).append(structure)
+                    if structure.last:
+                        mss[structure.molecule.id] = structure
+
+                not_last = set(mis).difference(mss)
+                if not_last:
+                    for structure in MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
+                        mss[structure.molecule.id] = structure
+
+                combos, mapping = {}, {}
+                for mr in mrs:
+                    combos.setdefault(mr.reaction.id, []).append([x for x in mis[mr.molecule.id]
+                                                                  if x.id in rsr[mr.reaction.id]])
+                    mapping.setdefault(mr.reaction.id, []).append((mr.product, mr.mapping))
+
+                rrcs = {}
+                for ri in ris:
+                    for combo in product(*combos[ri]):
+                        rc = ReactionContainer()
+                        for ms, (is_p, ms_map) in zip(combo, mapping[ri]):
+                            rc['products' if is_p else 'substrats'].append(
+                                relabel_nodes(ms.structure, ms_map) if ms_map else ms.structure)
+                        rrcs.setdefault(ri, []).append(rc)
+            else:
+                mss = {x.molecule.id: x for x in
+                       select(ms for ms in MoleculeStructure for mr in MoleculeReaction
+                              if ms.molecule == mr.molecule and mr.reaction.id in ris and ms.last)}
 
             rcs = {x: ReactionContainer() for x in ris}
             for mr in mrs:
@@ -551,15 +602,19 @@ def load_tables(db, schema, user_entity=None):
             for ri in ris:
                 r = rs[ri]
                 r.structure = rcs[ri]
+                if set_raw:
+                    r.structures_raw = rrcs[ri]
                 out.append(r)
 
-            return out
+            return out, its
 
         def add_conditions(self, data, user):
             ReactionConditions(data, self, user)
 
         __cached_structure = None
         __cached_cgr = None
+        __cached_structures_raw = None
+        __cached_cgrs_raw = None
 
     class MoleculeReaction(db.Entity):
         _table_ = '%s_molecule_reaction' % schema if DEBUG else (schema, 'molecule_reaction')
@@ -632,7 +687,7 @@ def load_tables(db, schema, user_entity=None):
             fp, bs = self.init_fingerprint(fingerprint)
 
             db.Entity.__init__(self, reaction=reaction, fear=fear, mapless_fear=mapless_fear, bit_array=bs)
-            for m in structures:
+            for m in set(structures):
                 self.structures.add(m)
             self.fingerprint = fp
 
