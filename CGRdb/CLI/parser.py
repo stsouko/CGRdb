@@ -23,6 +23,7 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
 from importlib.util import find_spec
 from ..config import DB_DATA_LIST
 from ..version import version
+from .main_create import create_core
 from .main_populate import populate_core
 from .main_similarity import similarity_search_core
 from .main_structure import structure_search_core
@@ -86,6 +87,13 @@ def populate(subparsers):
     parser.set_defaults(func=populate_core)
 
 
+def create_db(subparsers):
+    parser = subparsers.add_parser('create', help='This utility create new db',
+                                   formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--name', '-n', help='schema name')
+    parser.set_defaults(func=create_core)
+
+
 def argparser():
     parser = ArgumentParser(description="CGRdb", epilog="(c) Dr. Ramil Nugmanov", prog='cgrdb')
     parser.add_argument("--version", "-v", action="version", version=version(), default=False)
@@ -95,6 +103,7 @@ def argparser():
     substructure_search(subparsers)
     similarity_search(subparsers)
 
+    create_db(subparsers)
     populate(subparsers)
 
     if find_spec('argcomplete'):

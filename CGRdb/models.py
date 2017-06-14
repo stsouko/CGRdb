@@ -19,10 +19,9 @@
 #  MA 02110-1301, USA.
 #
 from bitstring import BitArray
-from CGRtools.CGRcore import CGRcore
-from CGRtools.CGRreactor import CGRreactor
-from CGRtools.FEAR import FEAR
-from CGRtools.files import MoleculeContainer, ReactionContainer
+from CGRtools.preparer import CGRcombo
+from CGRtools.reactor import CGRreactor
+from CGRtools.containers import MoleculeContainer, ReactionContainer
 from CIMtools.descriptors.fragmentor import Fragmentor
 from collections import OrderedDict
 from datetime import datetime
@@ -49,7 +48,6 @@ class UserADHOC(metaclass=UserADHOCMeta):
 class ReactionMoleculeMixin(object):
     __fingerprints = Fingerprints(FP_SIZE, active_bits=FP_ACTIVE_BITS)
     __cgr_reactor = CGRreactor(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
-    __fear = FEAR(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
 
     @classmethod
     def descriptors_to_fingerprints(cls, descriptors, bit_array=True):
@@ -62,10 +60,6 @@ class ReactionMoleculeMixin(object):
     @classmethod
     def match_structures(cls, g, h):
         return next(cls.get_cgr_matcher(g, h).isomorphisms_iter())
-
-    @classmethod
-    def get_fear_string(cls, structure):
-        return cls.__fear.get_cgr_string(structure)
 
 
 class FingerprintMixin(object):
@@ -137,7 +131,7 @@ def load_tables(db, schema, user_entity=None):
 
         @classmethod
         def get_fear(cls, structure):
-            return cls.get_fear_string(structure)
+            return structure.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
 
         @classmethod
         def get_fingerprints(cls, structures, bit_array=True):
@@ -284,7 +278,7 @@ def load_tables(db, schema, user_entity=None):
         classes = Set('ReactionClass')
         special = Optional(Json)
 
-        __cgr_core = CGRcore()
+        __cgr_core = CGRcombo()
         __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_CGR,
                                   min_length=FRAGMENT_MIN_CGR, max_length=FRAGMENT_MAX_CGR, workpath=WORKPATH,
                                   cgr_dynbonds=FRAGMENT_DYNBOND_CGR, useformalcharge=True)
@@ -435,13 +429,14 @@ def load_tables(db, schema, user_entity=None):
         @classmethod
         def get_fear(cls, structure, is_merged=False, get_cgr=False):
             cgr = cls.get_cgr(structure, is_merged=is_merged)
-            fear_string = cls.get_fear_string(cgr)
+            fear_string = cgr.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
             return (fear_string, cgr) if get_cgr else fear_string
 
         @classmethod
         def get_mapless_fear(cls, structure, is_merged=False, get_merged=False):
             merged = structure if is_merged else cls.merge_mols(structure)
-            fear_string = '%s>>%s' % (cls.get_fear_string(merged['substrats']), cls.get_fear_string(merged['products']))
+            fear_string = merged.substrats.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO) + \
+                merged.products.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
             return (fear_string, merged) if get_merged else fear_string
 
         @property
@@ -650,7 +645,7 @@ def load_tables(db, schema, user_entity=None):
         last = Required(bool, default=True)
 
         data = Required(Json)
-        fear = Required(str, unique=True)
+        fear = Required(bytes, unique=True)
         bit_array = Required(Json, column='bit_list')
 
         def __init__(self, molecule, structure, user, fingerprint, fear):
@@ -679,8 +674,8 @@ def load_tables(db, schema, user_entity=None):
         structures = Set('MoleculeStructure', table='%s_reaction_index_structure' % schema if DEBUG else
                                                     (schema, 'reaction_index_structure'))
 
-        fear = Required(str, unique=True)
-        mapless_fear = Required(str)
+        fear = Required(bytes, unique=True)
+        mapless_fear = Required(bytes)
         bit_array = Required(Json, column='bit_list')
 
         def __init__(self, reaction, structures, fingerprint, fear, mapless_fear):
