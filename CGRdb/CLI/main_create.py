@@ -27,22 +27,22 @@ from ..models import load_tables
 
 def create_core(**kwargs):
     schema = kwargs['name']
-    if DEBUG:
-        sql_debug(True)
-
-    sql_debug(True)
+    user = DB_USER if kwargs['user'] is None else kwargs['user']
+    password = DB_PASS if kwargs['pass'] is None else kwargs['pass']
 
     x = Database()
     load_tables(x, schema, None)
 
     if DEBUG:
+        sql_debug(True)
         x.bind('sqlite', 'database.sqlite')
         x.generate_mapping(create_tables=True)
     else:
-        x.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
+        x.bind('postgres', user=user, password=password, host=DB_HOST, database=DB_NAME)
         x.generate_mapping(create_tables=True)
+
         with db_session:
-            ext_smlar = 'CREATE EXTENSION IF NOT EXISTS smlar WITH SCHEMA {0}'.format(schema)
+            ext_smlar = 'CREATE EXTENSION IF NOT EXISTS smlar'
 
             json_int2 = 'CREATE OR REPLACE FUNCTION {0}.json_int2(_js jsonb)\n' \
                         'RETURNS INT2[] AS\n' \

@@ -20,5 +20,26 @@
 #
 
 
-def version():
-    return '1.0.1'
+class UserADHOCMeta(type):
+    def __getitem__(cls, item):
+        return cls(item)
+
+
+class UserADHOC(metaclass=UserADHOCMeta):
+    def __init__(self, uid):
+        self.id = uid
+
+
+def load_tables(db, schema, user_entity=None):
+    if not user_entity:  # User Entity ADHOC.
+        user_entity = UserADHOC
+
+    from .molecule import load_tables as molecule_load
+    from .reaction import load_tables as reaction_load
+    from .data import load_tables as data_load
+
+    molecule_load(db, schema, user_entity)
+    reaction_load(db, schema, user_entity)
+    data_load(db, schema, user_entity)
+
+    return db.Molecule, db.Reaction

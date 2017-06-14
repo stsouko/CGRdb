@@ -90,7 +90,9 @@ def populate(subparsers):
 def create_db(subparsers):
     parser = subparsers.add_parser('create', help='This utility create new db',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--name', '-n', help='schema name')
+    parser.add_argument('--name', '-n', help='schema name', required=True)
+    parser.add_argument('--user', '-u', type=str, help='admin login')
+    parser.add_argument('--pass', '-p', type=str, help='admin pass')
     parser.set_defaults(func=create_core)
 
 
