@@ -58,7 +58,7 @@ class ReactionMoleculeMixin(object):
         return cls.__cgr_reactor.get_cgr_matcher(g, h)
 
     @classmethod
-    def match_structures(cls, g, h):
+    def match_structures(cls, g: object, h: object) -> object:
         return next(cls.get_cgr_matcher(g, h).isomorphisms_iter())
 
 
@@ -421,7 +421,7 @@ def load_tables(db, schema, user_entity=None):
             return cls.__cgr_core.merge_mols(*args, **kwargs)
 
         @classmethod
-        def get_fingerprints(cls, structures, is_cgr=False, bit_array=True):
+        def get_fingerprints(cls, structures: object, is_cgr: object = False, bit_array: object = True) -> object:
             cgrs = structures if is_cgr else [cls.get_cgr(x) for x in structures]
             f = cls.__fragmentor.get(cgrs)['X']
             return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
@@ -490,10 +490,9 @@ def load_tables(db, schema, user_entity=None):
             return ReactionIndex.exists(fear=structure if is_fear else cls.get_fear(structure))
 
         @classmethod
-        def find_mapless_structure(cls, structure, is_fear=False):
-            ri = ReactionIndex.get(mapless_fear=structure if is_fear else cls.get_mapless_fear(structure))
-            if ri:
-                return ri.reaction
+        def find_mapless_structures(cls, structure, is_fear=False):
+            fear = structure if is_fear else cls.get_mapless_fear(structure)
+            return list(select(x.reaction for x in ReactionIndex if x.mapless_fear == fear))
 
         @classmethod
         def find_structure(cls, structure, is_fear=False):
@@ -603,6 +602,57 @@ def load_tables(db, schema, user_entity=None):
 
             return out, its
 
+        def remap(self, structure):
+            new_map, structures = [], []
+            mss, ris = {}, {}
+            fear = self.get_fear(structure)
+            ir = iter(structure.substrats)
+            ip = iter(structure.products)
+            rc = ReactionContainer()
+            if self.structure_exists(fear, is_fear=True):
+                raise Exception('This structure already exists')
+            mapless = self.get_mapless_fear(structure)
+            reaction_index = self.reaction_indexes.filter(lambda x: x.mapless_fear==mapless).first()
+            if reaction_index is None:
+                raise Exception('Mapping for this reaction already exists')
+            mrs = list(self.molecules.order_by(lambda x: x.id))
+
+            for ms in reaction_index.structures:
+                mss.setdefault(ms.molecule.id, []).append(ms)
+            for mr in mrs:
+                user_structure = next(ip) if mr.product else next(ir)
+                for ms in mss[mr.molecule.id]:
+                    try:
+                        mapping = self.match_structures(ms, user_structure)
+                        new_map.append(mapping)
+                        break
+                    except StopIteration:
+                        pass
+                else:
+                    raise Exception('Structure не соответствует тому что есть')
+
+            for mr, mp in zip(mrs, new_map):
+                mr.mapping = mp
+
+            for ri in select(x.reaction.id for x in ReactionIndex):
+                ris.setdefault(ri, []).append(ri.mapless_fear)
+
+            structures = list(select(ms for ms in MoleculeStructure if ms.molecule.id in mss.keys))
+            mss = {}
+            for ms in structures:
+                mss.setdefault(ms.molecule.id, []).append(ms)
+            combinations = list(product([mrs[x.molecule.id] for x in sorted(mrs)],[x for x in mss.values()]))
+            for ms, mr in zip(combinations, mrs):
+                rc['products' if mr.product else 'substrats'].append(
+                    relabel_nodes(ms.structure, mr.mapping) if mr.mapping else ms.structure)
+                new_bit_array = self.get_fingerprints(structures=rc, is_cgr=True, bit_array=False)
+                new_fear = self.get_fear(structure=rc, get_cgr=True)
+                bit_string = new_bit_array[0]
+                mapless_fear = self.get_mapless_fear(ms)
+
+                for ri in select(ri for ri in ris if mapless_fear in ris.values()):
+                    ri.update(self, fear=new_fear, fingerprint=bit_string)
+
         def add_conditions(self, data, user):
             ReactionConditions(data, self, user)
 
@@ -628,6 +678,10 @@ def load_tables(db, schema, user_entity=None):
             if self.__cached_mapping is None:
                 self.__cached_mapping = dict(self._mapping) if self._mapping else {}
             return self.__cached_mapping
+
+        @mapping.setter
+        def mapping(self, mapping):
+            self._mapping = self.mapping_transform(mapping)
 
         @staticmethod
         def mapping_transform(mapping):
@@ -685,6 +739,14 @@ def load_tables(db, schema, user_entity=None):
             for m in set(structures):
                 self.structures.add(m)
             self.fingerprint = fp
+
+        def update(self, fear=None, fingerprint=None):
+            if fear is not None:
+                self.fear = fear
+            if fingerprint is not None:
+                fp, bs = self.init_fingerprint(fingerprint)
+                self.fingerprint = fp
+                self.bit_array = bs
 
     class MoleculeProperties(db.Entity):
         _table_ = '%s_properties' % schema if DEBUG else (schema, 'properties')
