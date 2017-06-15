@@ -18,8 +18,9 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRtools.containers import ReactionContainer
+from CGRtools.containers import ReactionContainer, MergedReaction, MoleculeContainer
 from CGRtools.preparer import CGRcombo
+from CGRtools.strings import hash_cgr_string
 from CIMtools.descriptors.fragmentor import Fragmentor
 from collections import OrderedDict
 from datetime import datetime
@@ -80,23 +81,21 @@ def load_tables(db, schema, user_entity):
                     mf, mgs = self.get_mapless_fear(cs, get_merged=True)
                     mapless_fears.append(mf)
                     merged.append(mgs)
-                is_merged = True
             else:
                 merged = None
-                is_merged = False
 
             if fears is None or len(fears) != combolen:
                 fears, cgrs = [], []
                 for x in merged or combo_structures:
-                    f, c = self.get_fear(x, get_cgr=True, is_merged=is_merged)
+                    f, c = self.get_fear(x, get_cgr=True)
                     fears.append(f)
                     cgrs.append(c)
 
             elif cgrs is None or len(cgrs) != combolen:
-                cgrs = [self.get_cgr(x, is_merged=is_merged) for x in merged or combo_structures]
+                cgrs = [self.get_cgr(x) for x in merged or combo_structures]
 
             if fingerprints is None or len(fingerprints) != combolen:
-                fingerprints = self.get_fingerprints(cgrs, is_cgr=True, bit_array=False)
+                fingerprints = self.get_fingerprints(cgrs, bit_array=False)
 
             db.Entity.__init__(self, user_id=user.id)
 
@@ -181,30 +180,32 @@ def load_tables(db, schema, user_entity):
             return user_entity[self.user_id]
 
         @classmethod
-        def get_cgr(cls, *args, **kwargs):
-            return cls.__cgr_core.getCGR(*args, **kwargs)
+        def get_cgr(cls, structure):
+            return cls.__cgr_core.getCGR(structure)
 
         @classmethod
-        def merge_mols(cls, *args, **kwargs):
-            return cls.__cgr_core.merge_mols(*args, **kwargs)
+        def merge_mols(cls, structure):
+            return cls.__cgr_core.merge_mols(structure)
 
         @classmethod
-        def get_fingerprints(cls, structures, is_cgr=False, bit_array=True):
-            cgrs = structures if is_cgr else [cls.get_cgr(x) for x in structures]
-            f = cls.__fragmentor.get(cgrs)['X']
+        def get_fingerprints(cls, structures, bit_array=True):
+            cgrs = [x if isinstance(x, MoleculeContainer) else cls.get_cgr(x) for x in structures]
+            f = cls.__fragmentor.get(cgrs).X
             return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
 
         @classmethod
-        def get_fear(cls, structure, is_merged=False, get_cgr=False):
-            cgr = cls.get_cgr(structure, is_merged=is_merged)
+        def get_fear(cls, structure, get_cgr=False):
+            cgr = cls.get_cgr(structure)
             fear_string = cgr.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
             return (fear_string, cgr) if get_cgr else fear_string
 
         @classmethod
-        def get_mapless_fear(cls, structure, is_merged=False, get_merged=False):
-            merged = structure if is_merged else cls.merge_mols(structure)
-            fear_string = merged.substrats.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO) + \
-                merged.products.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
+        def get_mapless_fear(cls, structure, get_merged=False):
+            merged = structure if isinstance(structure, MergedReaction) else cls.merge_mols(structure)
+            fear_string = hash_cgr_string('%s>>%s' % (merged.substrats.get_fear(isotope=DATA_ISOTOPE,
+                                                                                stereo=DATA_STEREO),
+                                                      merged.products.get_fear(isotope=DATA_ISOTOPE,
+                                                                               stereo=DATA_STEREO)))
             return (fear_string, merged) if get_merged else fear_string
 
         @property
@@ -249,23 +250,74 @@ def load_tables(db, schema, user_entity):
         def structures_raw(self, structure):
             self.__cached_structures_raw = structure
 
-        @classmethod
-        def mapless_structure_exists(cls, structure, is_fear=False):
-            return ReactionIndex.exists(mapless_fear=structure if is_fear else cls.get_mapless_fear(structure))
+        def remap(self, structure):  # todo: NEED REVIEW
+            new_map, structures = [], []
+            mss, ris = {}, {}
+            fear = self.get_fear(structure)
+            ir = iter(structure.substrats)
+            ip = iter(structure.products)
+            rc = ReactionContainer()
+            if self.structure_exists(fear):
+                raise Exception('This structure already exists')
+            mapless = self.get_mapless_fear(structure)
+            reaction_index = self.reaction_indexes.filter(lambda x: x.mapless_fear==mapless).first()
+            if reaction_index is None:
+                raise Exception('Mapping for this reaction already exists')
+            mrs = list(self.molecules.order_by(lambda x: x.id))
+
+            for ms in reaction_index.structures:
+                mss.setdefault(ms.molecule.id, []).append(ms)
+            for mr in mrs:
+                user_structure = next(ip) if mr.product else next(ir)
+                for ms in mss[mr.molecule.id]:
+                    try:
+                        mapping = self.match_structures(ms, user_structure)
+                        new_map.append(mapping)
+                        break
+                    except StopIteration:
+                        pass
+                else:
+                    raise Exception('Structure не соответствует тому что есть')
+
+            for mr, mp in zip(mrs, new_map):
+                mr.mapping = mp
+
+            for ri in select(x.reaction.id for x in ReactionIndex):
+                ris.setdefault(ri, []).append(ri.mapless_fear)
+
+            structures = list(select(ms for ms in db.MoleculeStructure if ms.molecule.id in mss.keys))
+            mss = {}
+            for ms in structures:
+                mss.setdefault(ms.molecule.id, []).append(ms)
+            combinations = list(product([mrs[x.molecule.id] for x in sorted(mrs)],[x for x in mss.values()]))
+            for ms, mr in zip(combinations, mrs):
+                rc['products' if mr.product else 'substrats'].append(
+                    ms.structure.remap(mr.mapping, copy=True) if mr.mapping else ms.structure)
+                new_bit_array = self.get_fingerprints(structures=rc, bit_array=False)
+                new_fear = self.get_fear(structure=rc, get_cgr=True)
+                bit_string = new_bit_array[0]
+                mapless_fear = self.get_mapless_fear(ms)
+
+                for ri in select(ri for ri in ris if mapless_fear in ris.values()):
+                    ri.update(self, fear=new_fear, fingerprint=bit_string)
 
         @classmethod
-        def structure_exists(cls, structure, is_fear=False):
-            return ReactionIndex.exists(fear=structure if is_fear else cls.get_fear(structure))
+        def mapless_structure_exists(cls, structure):
+            return ReactionIndex.exists(mapless_fear=structure if isinstance(structure, bytes) else
+                                        cls.get_mapless_fear(structure))
 
         @classmethod
-        def find_mapless_structure(cls, structure, is_fear=False):
-            ri = ReactionIndex.get(mapless_fear=structure if is_fear else cls.get_mapless_fear(structure))
-            if ri:
-                return ri.reaction
+        def structure_exists(cls, structure):
+            return ReactionIndex.exists(fear=structure if isinstance(structure, bytes) else cls.get_fear(structure))
 
         @classmethod
-        def find_structure(cls, structure, is_fear=False):
-            ri = ReactionIndex.get(fear=structure if is_fear else cls.get_fear(structure))
+        def find_mapless_structures(cls, structure):
+            fear = structure if isinstance(structure, bytes) else cls.get_mapless_fear(structure)
+            return list(select(x.reaction for x in ReactionIndex if x.mapless_fear == fear))
+
+        @classmethod
+        def find_structure(cls, structure):
+            ri = ReactionIndex.get(fear=structure if isinstance(structure, bytes) else cls.get_fear(structure))
             if ri:
                 return ri.reaction
 
@@ -397,6 +449,10 @@ def load_tables(db, schema, user_entity):
                 self.__cached_mapping = dict(self._mapping) if self._mapping else {}
             return self.__cached_mapping
 
+        @mapping.setter
+        def mapping(self, mapping):
+            self._mapping = self.mapping_transform(mapping)
+
         @staticmethod
         def mapping_transform(mapping):
             return [(k, v) for k, v in mapping.items() if k != v] or None
@@ -421,3 +477,8 @@ def load_tables(db, schema, user_entity):
             for m in set(structures):
                 self.structures.add(m)
             self.fingerprint = fp
+
+        def update_fingerprint(self, fingerprint):
+            fp, bs = self._init_fingerprint(fingerprint)
+            self.fingerprint = fp
+            self.bit_array = bs

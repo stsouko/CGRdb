@@ -62,7 +62,7 @@ def populate_core(**kwargs):
             rnum = next(raw_data)
             try:
                 ml_fear_str, mr = Reaction.get_mapless_fear(r, get_merged=True)
-                fear_str, cgr = Reaction.get_fear(mr, is_merged=True, get_cgr=True)
+                fear_str, cgr = Reaction.get_fear(mr, get_cgr=True)
                 rms = dict(substrats=[], products=[])
 
                 for i in ('substrats', 'products'):
@@ -74,11 +74,11 @@ def populate_core(**kwargs):
                 lrms.append(rms)
                 cleaned.append((r, fear_str, ml_fear_str, rnum, cgr))
                 next(clean_data)
-            except:
-                pass
+            except Exception as e:
+                print(e)
 
-        rfps = Reaction.get_fingerprints([x for *_, x in cleaned], is_cgr=True, bit_array=False)
-        mfps = Molecule.get_fingerprints([m for m, *_ in molecules], bit_array=False)
+        rfps = Reaction.get_fingerprints([x for *_, x in cleaned], bit_array=False)
+        mfps = Molecule.get_fingerprints([x for x, *_ in molecules], bit_array=False)
 
         with db_session:
             user = UserADHOC[kwargs['user']]
@@ -91,7 +91,7 @@ def populate_core(**kwargs):
                     fuck_opt.append(rnum)
 
             for (r, rs, ml_fear, rnum, cgr), r_fp, rms in zip(cleaned, rfps, lrms):
-                reaction = Reaction.find_structure(rs, is_fear=True)
+                reaction = Reaction.find_structure(rs)
                 meta = data_parser.parse(r['meta'])
 
                 if not reaction:

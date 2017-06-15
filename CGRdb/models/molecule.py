@@ -63,7 +63,7 @@ def load_tables(db, schema, user_entity):
 
         @classmethod
         def get_fingerprints(cls, structures, bit_array=True):
-            f = cls.__fragmentor.get(structures)['X']
+            f = cls.__fragmentor.get(structures).X
             return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
 
         @property
