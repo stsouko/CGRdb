@@ -71,7 +71,7 @@ def load_tables(db, schema, user_entity):
 
             combos = list(product(*[all_combos[x] for x in sorted(all_combos)]))
             combolen = len(combos)
-            substratslen = len(structure['substrats'])
+            substratslen = len(structure.substrats)
             combo_structures = [ReactionContainer(substrats=[s for s, _ in x[:substratslen]],
                                                   products=[s for s, _ in x[substratslen:]]) for x in combos]
 
@@ -250,56 +250,70 @@ def load_tables(db, schema, user_entity):
         def structures_raw(self, structure):
             self.__cached_structures_raw = structure
 
-        def remap(self, structure):  # todo: NEED REVIEW
-            new_map, structures = [], []
-            mss, ris = {}, {}
+        def remap(self, structure):
             fear = self.get_fear(structure)
-            ir = iter(structure.substrats)
-            ip = iter(structure.products)
-            rc = ReactionContainer()
             if self.structure_exists(fear):
                 raise Exception('This structure already exists')
-            mapless = self.get_mapless_fear(structure)
-            reaction_index = self.reaction_indexes.filter(lambda x: x.mapless_fear==mapless).first()
-            if reaction_index is None:
-                raise Exception('Mapping for this reaction already exists')
-            mrs = list(self.molecules.order_by(lambda x: x.id))
 
-            for ms in reaction_index.structures:
+            mf = self.get_mapless_fear(structure)
+            ris = {x.mapless_fear: x for x in self.reaction_indexes}
+            if mf not in ris:
+                raise Exception('passed structure not equal to structure in DB')
+
+            new_map, mss = [], {}
+            for ms in ris[mf].structures:
                 mss.setdefault(ms.molecule.id, []).append(ms)
+
+            ir = iter(structure.substrats)
+            ip = iter(structure.products)
+            mrs = list(self.molecules.order_by(lambda x: x.id))
             for mr in mrs:
                 user_structure = next(ip) if mr.product else next(ir)
                 for ms in mss[mr.molecule.id]:
                     try:
-                        mapping = self.match_structures(ms, user_structure)
+                        mapping = self.match_structures(ms.structure, user_structure)
                         new_map.append(mapping)
                         break
                     except StopIteration:
                         pass
                 else:
-                    raise Exception('Structure не соответствует тому что есть')
+                    raise Exception('Structure not isomorphic to structure in DB')
 
             for mr, mp in zip(mrs, new_map):
-                mr.mapping = mp
+                if any(k != v for k, v in mp.items()):
+                    mr.mapping = mp
 
-            for ri in select(x.reaction.id for x in ReactionIndex):
-                ris.setdefault(ri, []).append(ri.mapless_fear)
-
-            structures = list(select(ms for ms in db.MoleculeStructure if ms.molecule.id in mss.keys))
-            mss = {}
-            for ms in structures:
+            mis = set(x.molecule.id for x in mrs)
+            exists_ms = set(y.id for x in mss.values() for y in x)
+            for ms in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.id not in exists_ms):
                 mss.setdefault(ms.molecule.id, []).append(ms)
-            combinations = list(product([mrs[x.molecule.id] for x in sorted(mrs)],[x for x in mss.values()]))
-            for ms, mr in zip(combinations, mrs):
-                rc['products' if mr.product else 'substrats'].append(
-                    ms.structure.remap(mr.mapping, copy=True) if mr.mapping else ms.structure)
-                new_bit_array = self.get_fingerprints(structures=rc, bit_array=False)
-                new_fear = self.get_fear(structure=rc, get_cgr=True)
-                bit_string = new_bit_array[0]
-                mapless_fear = self.get_mapless_fear(ms)
 
-                for ri in select(ri for ri in ris if mapless_fear in ris.values()):
-                    ri.update(self, fear=new_fear, fingerprint=bit_string)
+            substs = []
+            prods = []
+            for mr in mrs:
+                s = [x.structure.remap(mr.mapping, copy=True) for x in mss[mr.molecule.id]]
+                if mr.product:
+                    prods.append(s)
+                else:
+                    substs.append(s)
+
+            combos = list(product(*(substs + prods)))
+            substratslen = len(structure.substrats)
+            combo_structures = [ReactionContainer(substrats=[s for s in x[:substratslen]],
+                                                  products=[s for s in x[substratslen:]]) for x in combos]
+
+            check = []
+            for cs in combo_structures:
+                mf, mgs = self.get_mapless_fear(cs, get_merged=True)
+                fs, cgr = self.get_fear(mgs, get_cgr=True)
+                fp = self.get_fingerprints([cgr], bit_array=False)[0]
+
+                ris[mf].fear = fs
+                ris[mf].update_fingerprint(fp)
+                check.append(mf)
+
+            if len(ris) != len(check):
+                raise Exception('number of reaction indexes not equal to number of structure combinations')
 
         @classmethod
         def mapless_structure_exists(cls, structure):
