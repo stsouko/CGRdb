@@ -21,6 +21,7 @@
 from CGRtools.containers import MoleculeContainer
 from CIMtools.descriptors.fragmentor import Fragmentor
 from datetime import datetime
+from operator import itemgetter
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql
 from .mixins import ReactionMoleculeMixin, FingerprintMixin
 from ..config import (FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
@@ -156,8 +157,8 @@ def load_tables(db, schema, user_entity):
             sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
             sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             mis, sts, sis = [], [], []
-            for mi, si, st in select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in MoleculeStructure
-                                     if raw_sql(sql_select)).order_by(raw_sql('T DESC')).limit(number * 2):
+            for mi, si, st in sorted(select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in MoleculeStructure
+                                     if raw_sql(sql_select)).limit(number * 2), key=itemgetter(2), reverse=True):
                 if len(mis) == number:
                     break  # limit of results len to given number
                 if mi not in mis:

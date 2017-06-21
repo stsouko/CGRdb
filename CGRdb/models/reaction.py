@@ -25,6 +25,7 @@ from CIMtools.descriptors.fragmentor import Fragmentor
 from collections import OrderedDict
 from datetime import datetime
 from itertools import count, product
+from operator import itemgetter
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql, left_join
 from .mixins import ReactionMoleculeMixin, FingerprintMixin
 from ..config import (FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR,
@@ -373,8 +374,8 @@ def load_tables(db, schema, user_entity):
             sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
             sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             ris, its, iis = [], [], []
-            for ri, rt, ii in select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in ReactionIndex
-                                     if raw_sql(sql_select)).order_by(raw_sql('T DESC')).limit(number * 2):
+            for ri, rt, ii in sorted(select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in ReactionIndex
+                                     if raw_sql(sql_select)).limit(number * 2), key=itemgetter(2), reverse=True):
                 if len(ris) == number:
                     break
                 if ri not in ris:
