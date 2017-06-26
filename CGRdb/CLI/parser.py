@@ -81,6 +81,7 @@ def populate(subparsers):
     parser.add_argument('--input', '-i', default='input.rdf', type=FileType(), help='RDF inputfile')
     parser.add_argument('--parser', '-p', default='none', choices=['reaxys', 'none'], type=str, help='Data Format')
     parser.add_argument('--chunk', '-c', default=100, type=int, help='Chunks size')
+    parser.add_argument('--n_jobs', '-n', default=4, type=int, help='Parallel jobs')
     parser.add_argument('--user', '-u', default=1, type=int, help='User id')
     parser.add_argument("--database", '-db', type=str, default=DB_DATA_LIST[0], choices=DB_DATA_LIST,
                         help='Database name for populate')

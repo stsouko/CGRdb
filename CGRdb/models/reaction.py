@@ -289,8 +289,7 @@ def load_tables(db, schema, user_entity):
             for ms in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.id not in exists_ms):
                 mss.setdefault(ms.molecule.id, []).append(ms)
 
-            substs = []
-            prods = []
+            substs, prods = [], []
             for mr in mrs:
                 s = [x.structure.remap(mr.mapping, copy=True) for x in mss[mr.molecule.id]]
                 if mr.product:
@@ -298,13 +297,11 @@ def load_tables(db, schema, user_entity):
                 else:
                     substs.append(s)
 
-            combos = list(product(*(substs + prods)))
+            combos = product(*(substs + prods))
             substratslen = len(structure.substrats)
-            combo_structures = [ReactionContainer(substrats=[s for s in x[:substratslen]],
-                                                  products=[s for s in x[substratslen:]]) for x in combos]
-
             check = []
-            for cs in combo_structures:
+            for x in combos:
+                cs = ReactionContainer(substrats=[s for s in x[:substratslen]], products=[s for s in x[substratslen:]])
                 mf, mgs = self.get_mapless_fear(cs, get_merged=True)
                 fs, cgr = self.get_fear(mgs, get_cgr=True)
                 fp = self.get_fingerprints([cgr], bit_array=False)[0]
