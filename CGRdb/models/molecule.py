@@ -18,13 +18,14 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRtools.containers import MoleculeContainer
+from CGRtools.containers import MoleculeContainer, ReactionContainer
 from CIMtools.descriptors.fragmentor import Fragmentor
 from datetime import datetime
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql
 from .mixins import ReactionMoleculeMixin, FingerprintMixin
 from ..config import (FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
                       FRAGMENT_MAX_MOL, WORKPATH)
+from itertools import product, zip_longest, groupby
 
 
 def load_tables(db, schema, user_entity):
@@ -191,6 +192,45 @@ def load_tables(db, schema, user_entity):
 
             return [ms[x] for x in mis], sts
 
+        def new_structure(self, structure, user=None):
+            structure_exist = self.structure_exists(structure)
+            if structure_exist:
+                raise Exception('structure already exists')
+            new_ms = MoleculeStructure(structure=structure, fear=self.get_fear(structure=structure),
+                                       fingerprint=self.get_fingerprints(structures=structure, bit_array=False)[0],
+                                       molecule=self, user=self.user if user is not None else user)
+            mrs = list(self.reactions.order_by(lambda x: x.id))
+            mid = set(mr.molecule.id for mr in mrs)
+            mss = {}
+
+            for ms in list(MoleculeStructure.select(lambda x: x.molecule.id in mid)):
+                mss.setdefault(ms.molecule.id, []).append(ms)
+
+            ss, ps = [], []
+            for r in groupby(mrs, key=lambda x: x.reaction.id):
+                for mr in r[1]:
+                    s = [x.structure.remap(mr.mapping, copy=True) for x in mss[mr.molecule.id]]
+                    if mr.product:
+                        ps.append(s)
+                    else:
+                        ss.append(s)
+                slen = len(ss)
+                combo = ss + ps
+                indexes = list(combo.index(lambda x: x.molecule.id == self.id))
+
+                for i in indexes:
+                    copy = combo.copy()
+                    copy[i] = [new_ms]
+                    combos = list(product(*copy))
+
+                combo_structures = [ReactionContainer(substrats=[s for s in combos[:slen]],
+                                                          products=[s for s in combos[slen:]])]
+                for cs in combo_structures:
+                    mf, mgs = db.Reactions.get_mapless_fear(cs, get_merged=True)
+                    fs, cgr = db.Reactions.get_fear(mgs, get_cgr=True)
+                    fp = db.Reactions.get_fingerprints([cgr], bit_array=False)[0]
+                    db.ReactionIndex(fear=fs, bit_array=fp, mapless_fear=mf)
+
         __last = None
         __raw = None
 
@@ -220,5 +260,12 @@ def load_tables(db, schema, user_entity):
             if self.__cached_structure is None:
                 self.__cached_structure = MoleculeContainer.unpickle(self.data)
             return self.__cached_structure
+
+        @structure.setter
+        def structure(self, structure):
+            self.__cached_structure = structure
+
+        def add_structure(self, structure):
+            self.structure = db.Molecule.new_structure(structure=structure)
 
         __cached_structure = None
