@@ -289,8 +289,7 @@ def load_tables(db, schema, user_entity):
             for ms in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.id not in exists_ms):
                 mss.setdefault(ms.molecule.id, []).append(ms)
 
-            substs = []
-            prods = []
+            substs, prods = [], []
             for mr in mrs:
                 s = [x.structure.remap(mr.mapping, copy=True) for x in mss[mr.molecule.id]]
                 if mr.product:
