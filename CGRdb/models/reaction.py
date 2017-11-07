@@ -19,8 +19,8 @@
 #  MA 02110-1301, USA.
 #
 from CGRtools.containers import ReactionContainer, MergedReaction, MoleculeContainer
-from CGRtools.preparer import CGRcombo
-from CGRtools.strings import hash_cgr_string
+from CGRtools.preparer import CGRpreparer
+from CGRtools.algorithms import hash_cgr_string
 from CIMtools.descriptors.fragmentor import Fragmentor
 from collections import OrderedDict
 from datetime import datetime
@@ -28,12 +28,14 @@ from itertools import count, product
 from operator import itemgetter
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql, left_join
 from .mixins import ReactionMoleculeMixin, FingerprintMixin
+from .management.moleculemixin import mixin_factory as mmf
+from .management.reactionmixin import mixin_factory as rmf
 from ..config import (FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR,
                       FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH)
 
 
 def load_tables(db, schema, user_entity):
-    class Reaction(db.Entity, ReactionMoleculeMixin):
+    class Reaction(db.Entity, ReactionMoleculeMixin, mmf(db), rmf(db)):
         _table_ = '%s_reaction' % schema if DEBUG else (schema, 'reaction')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -44,7 +46,7 @@ def load_tables(db, schema, user_entity):
         classes = Set('ReactionClass')
         special = Optional(Json)
 
-        __cgr_core = CGRcombo()
+        __cgr_core = CGRpreparer()
         __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_CGR,
                                   min_length=FRAGMENT_MIN_CGR, max_length=FRAGMENT_MAX_CGR, workpath=WORKPATH,
                                   cgr_dynbonds=FRAGMENT_DYNBOND_CGR, useformalcharge=True)
@@ -251,68 +253,6 @@ def load_tables(db, schema, user_entity):
         def structures_raw(self, structure):
             self.__cached_structures_raw = structure
 
-        def remap(self, structure):
-            fear = self.get_fear(structure)
-            if self.structure_exists(fear):
-                raise Exception('This structure already exists')
-
-            mf = self.get_mapless_fear(structure)
-            ris = {x.mapless_fear: x for x in self.reaction_indexes}
-            if mf not in ris:
-                raise Exception('passed structure not equal to structure in DB')
-
-            new_map, mss = [], {}
-            for ms in ris[mf].structures:
-                mss.setdefault(ms.molecule.id, []).append(ms)
-
-            ir = iter(structure.substrats)
-            ip = iter(structure.products)
-            mrs = list(self.molecules.order_by(lambda x: x.id))
-            for mr in mrs:
-                user_structure = next(ip) if mr.product else next(ir)
-                for ms in mss[mr.molecule.id]:
-                    try:
-                        mapping = self.match_structures(ms.structure, user_structure)
-                        new_map.append(mapping)
-                        break
-                    except StopIteration:
-                        pass
-                else:
-                    raise Exception('Structure not isomorphic to structure in DB')
-
-            for mr, mp in zip(mrs, new_map):
-                if any(k != v for k, v in mp.items()):
-                    mr.mapping = mp
-
-            mis = set(x.molecule.id for x in mrs)
-            exists_ms = set(y.id for x in mss.values() for y in x)
-            for ms in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.id not in exists_ms):
-                mss.setdefault(ms.molecule.id, []).append(ms)
-
-            substs, prods = [], []
-            for mr in mrs:
-                s = [x.structure.remap(mr.mapping, copy=True) for x in mss[mr.molecule.id]]
-                if mr.product:
-                    prods.append(s)
-                else:
-                    substs.append(s)
-
-            combos = product(*(substs + prods))
-            substratslen = len(structure.substrats)
-            check = []
-            for x in combos:
-                cs = ReactionContainer(substrats=[s for s in x[:substratslen]], products=[s for s in x[substratslen:]])
-                mf, mgs = self.get_mapless_fear(cs, get_merged=True)
-                fs, cgr = self.get_fear(mgs, get_cgr=True)
-                fp = self.get_fingerprints([cgr], bit_array=False)[0]
-
-                ris[mf].fear = fs
-                ris[mf].update_fingerprint(fp)
-                check.append(mf)
-
-            if len(ris) != len(check):
-                raise Exception('number of reaction indexes not equal to number of structure combinations')
-
         @classmethod
         def mapless_structure_exists(cls, structure):
             return ReactionIndex.exists(mapless_fear=structure if isinstance(structure, bytes) else
@@ -444,15 +384,17 @@ def load_tables(db, schema, user_entity):
         __cached_cgrs_raw = None
 
     class MoleculeReaction(db.Entity):
+        """ molecule to reaction mapping data and role (reagent, reactant, product)
+        """
         _table_ = '%s_molecule_reaction' % schema if DEBUG else (schema, 'molecule_reaction')
         id = PrimaryKey(int, auto=True)
         reaction = Required('Reaction')
         molecule = Required('Molecule')
-        product = Required(bool, default=False)
+        _role = Required(int, default=0)
         _mapping = Optional(Json, column='mapping')
 
-        def __init__(self, reaction, molecule, is_product=False, mapping=None):
-            mapping = mapping and self.mapping_transform(mapping)
+        def __init__(self, reaction, molecule, role=False, mapping=None):
+            mapping = mapping and self.compressed_mapping(mapping)
             db.Entity.__init__(self, reaction=reaction, molecule=molecule, product=is_product, _mapping=mapping)
 
         @property
@@ -463,10 +405,10 @@ def load_tables(db, schema, user_entity):
 
         @mapping.setter
         def mapping(self, mapping):
-            self._mapping = self.mapping_transform(mapping)
+            self._mapping = self.compressed_mapping(mapping)
 
         @staticmethod
-        def mapping_transform(mapping):
+        def compressed_mapping(mapping):
             return [(k, v) for k, v in mapping.items() if k != v] or None
 
         __cached_mapping = None

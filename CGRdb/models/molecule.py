@@ -25,6 +25,7 @@ from itertools import product
 from operator import itemgetter
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql
 from .mixins import ReactionMoleculeMixin, FingerprintMixin
+from .management.moleculemixin import mixin_factory as mmf
 from ..config import (FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
                       FRAGMENT_MAX_MOL, WORKPATH)
 
@@ -35,7 +36,7 @@ def load_tables(db, schema, user_entity):
         def user(self):
             return user_entity[self.user_id]
 
-    class Molecule(db.Entity, UserMixin, ReactionMoleculeMixin):
+    class Molecule(db.Entity, UserMixin, ReactionMoleculeMixin, FingerprintMixin, mmf(db)):
         _table_ = '%s_molecule' % schema if DEBUG else (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -193,63 +194,10 @@ def load_tables(db, schema, user_entity):
 
             return [ms[x] for x in mis], sts
 
-        def new_structure(self, structure, user=None):
-            if self.structure_exists(structure):
-                raise Exception('structure already exists')
-            try:
-                fear = self.get_fear(structure)
-                fingerprint = self.get_fingerprints([structure], bit_array=False)[0]
-            except:
-                raise Exception('structure invalid')
-
-            mrs = list(self.reactions.order_by(lambda x: x.id))
-            mis = set(mr.molecule.id for mr in mrs)
-            ris = set(mr.reaction.id for mr in mrs)
-            rs = {x.id: x for x in db.Reaction.select(lambda x: x.id in ris)}
-            mss = {}
-            for ms in list(MoleculeStructure.select(lambda x: x.molecule.id in mis)):
-                mss.setdefault(ms.molecule.id, []).append(ms)
-
-            new_ms = MoleculeStructure(self, structure, self.user if user is None else user, fingerprint, fear)
-            mss[self.id].append(new_ms)
-
-            mcs, sis = {}, {}
-            for mr in mrs:
-                ri = mr.reaction.id
-                mi = mr.molecule.id
-                ss, ps, ns, np = mcs.get(ri) or mcs.setdefault(ri, ([], [], [], []))
-                if mi == self.id:
-                    if mr.product:
-                        np.append(len(ps))
-                    else:
-                        ns.append(len(ss))
-
-                if mr.product:
-                    ps.append((mi, mr.mapping))
-                else:
-                    ss.append((mi, mr.mapping))
-
-            for ri, (ps, ss, ns, np) in mcs.items():
-                substratslen = len(ss)
-                nsi = ns + [substratslen + x for x in np]
-                combos = [[(x, x.structure.remap(map_, copy=True)) for x in mss[mi]] for mi, map_ in (ss + ps)]
-
-                for i in nsi:
-                    copy = combos.copy()
-                    copy[i] = [copy[i][-1]]
-
-                    for combo in product(*copy):
-                        cs = ReactionContainer(substrats=[s for _, s in combo[:substratslen]],
-                                               products=[s for _, s in combo[substratslen:]])
-                        mf, mgs = db.Reactions.get_mapless_fear(cs, get_merged=True)
-                        fs, cgr = db.Reactions.get_fear(mgs, get_cgr=True)
-                        fp = db.Reactions.get_fingerprints([cgr], bit_array=False)[0]
-                        db.ReactionIndex(rs[ri], set(x for x, _ in combo), fp, fs, mf)
-
         __last = None
         __raw = None
 
-    class MoleculeStructure(db.Entity, UserMixin, FingerprintMixin):
+    class MoleculeStructure(db.Entity, UserMixin, ReactionMoleculeMixin, FingerprintMixin):
         _table_ = '%s_molecule_structure' % schema if DEBUG else (schema, 'molecule_structure')
         id = PrimaryKey(int, auto=True)
         user_id = Required(int, column='user')
