@@ -20,5 +20,19 @@
 #
 
 
-def version():
-    return '1.1.0'
+def mixin_factory(user_entity):
+    class User(object):
+        @property
+        def user(self):
+            return user_entity[self.user_id]
+    return User
+
+
+class UserADHOCMeta(type):
+    def __getitem__(cls, item):
+        return cls(item)
+
+
+class UserADHOC(metaclass=UserADHOCMeta):
+    def __init__(self, uid):
+        self.id = uid

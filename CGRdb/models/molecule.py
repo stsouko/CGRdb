@@ -18,25 +18,20 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRtools.containers import MoleculeContainer, ReactionContainer
-from CIMtools.descriptors.fragmentor import Fragmentor
 from datetime import datetime
-from itertools import product
 from operator import itemgetter
+from CGRtools.containers import MoleculeContainer
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql
-from .mixins import ReactionMoleculeMixin, FingerprintMixin
-from .management.moleculemixin import mixin_factory as mmf
-from ..config import (FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
-                      FRAGMENT_MAX_MOL, WORKPATH)
+from .user import mixin_factory as uf
+from ..config import DEBUG, DATA_ISOTOPE, DATA_STEREO
+from ..management.molecule.merge_molecules import mixin_factory as mmm
+from ..management.molecule.new_structure import mixin_factory as nsm
+from ..search.fingerprints import FingerprintsMolecule, FingerprintsIndex
+from ..search.graph_matcher import GraphMatcher
 
 
 def load_tables(db, schema, user_entity):
-    class UserMixin(object):
-        @property
-        def user(self):
-            return user_entity[self.user_id]
-
-    class Molecule(db.Entity, UserMixin, ReactionMoleculeMixin, FingerprintMixin, mmf(db)):
+    class Molecule(db.Entity, GraphMatcher, FingerprintsMolecule, mmm(db), nsm(db), uf(user_entity)):
         _table_ = '%s_molecule' % schema if DEBUG else (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -46,10 +41,6 @@ def load_tables(db, schema, user_entity):
         properties = Set('MoleculeProperties')
         classes = Set('MoleculeClass')
         special = Optional(Json)
-
-        __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_MOL,
-                                  workpath=WORKPATH, min_length=FRAGMENT_MIN_MOL, max_length=FRAGMENT_MAX_MOL,
-                                  useformalcharge=True)
 
         def __init__(self, structure, user, fingerprint=None, fear=None):
             if fear is None:
@@ -63,11 +54,6 @@ def load_tables(db, schema, user_entity):
         @classmethod
         def get_fear(cls, structure):
             return structure.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
-
-        @classmethod
-        def get_fingerprints(cls, structures, bit_array=True):
-            f = cls.__fragmentor.get(structures).X
-            return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
 
         @property
         def structure_raw(self):
@@ -197,7 +183,7 @@ def load_tables(db, schema, user_entity):
         __last = None
         __raw = None
 
-    class MoleculeStructure(db.Entity, UserMixin, ReactionMoleculeMixin, FingerprintMixin):
+    class MoleculeStructure(db.Entity, FingerprintsIndex, uf(user_entity)):
         _table_ = '%s_molecule_structure' % schema if DEBUG else (schema, 'molecule_structure')
         id = PrimaryKey(int, auto=True)
         user_id = Required(int, column='user')
@@ -211,12 +197,10 @@ def load_tables(db, schema, user_entity):
 
         def __init__(self, molecule, structure, user, fingerprint, fear):
             data = structure.pickle()
-            fp, bs = self._init_fingerprint(fingerprint)
+            bs = self.get_bits_list(fingerprint)
 
             db.Entity.__init__(self, data=data, user_id=user.id, fear=fear, bit_array=bs, molecule=molecule)
-
             self.__cached_structure = structure
-            self.fingerprint = fp
 
         @property
         def structure(self):

@@ -18,24 +18,23 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRtools.containers import ReactionContainer, MergedReaction, MoleculeContainer
-from CGRtools.preparer import CGRpreparer
-from CGRtools.algorithms import hash_cgr_string
-from CIMtools.descriptors.fragmentor import Fragmentor
 from collections import OrderedDict
 from datetime import datetime
 from itertools import count, product
 from operator import itemgetter
+from CGRtools.algorithms import hash_cgr_string
+from CGRtools.containers import ReactionContainer, MergedReaction
+from CGRtools.preparer import CGRpreparer
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql, left_join
-from .mixins import ReactionMoleculeMixin, FingerprintMixin
-from .management.moleculemixin import mixin_factory as mmf
-from .management.reactionmixin import mixin_factory as rmf
-from ..config import (FRAGMENTOR_VERSION, DEBUG, DATA_ISOTOPE, DATA_STEREO, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR,
-                      FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH)
+from .user import mixin_factory as uf
+from ..config import DEBUG, DATA_ISOTOPE, DATA_STEREO
+from ..management.reaction.remap import mixin_factory as rm
+from ..search.fingerprints import FingerprintsReaction, FingerprintsIndex
+from ..search.graph_matcher import GraphMatcher
 
 
 def load_tables(db, schema, user_entity):
-    class Reaction(db.Entity, ReactionMoleculeMixin, mmf(db), rmf(db)):
+    class Reaction(db.Entity, FingerprintsReaction, GraphMatcher, rm(db), uf(user_entity)):
         _table_ = '%s_reaction' % schema if DEBUG else (schema, 'reaction')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -47,9 +46,6 @@ def load_tables(db, schema, user_entity):
         special = Optional(Json)
 
         __cgr_core = CGRpreparer()
-        __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_CGR,
-                                  min_length=FRAGMENT_MIN_CGR, max_length=FRAGMENT_MAX_CGR, workpath=WORKPATH,
-                                  cgr_dynbonds=FRAGMENT_DYNBOND_CGR, useformalcharge=True)
 
         def __init__(self, structure, user, conditions=None, special=None, fingerprints=None, fears=None,
                      mapless_fears=None, cgrs=None, substrats_fears=None, products_fears=None):
@@ -178,10 +174,6 @@ def load_tables(db, schema, user_entity):
 
             return batch, all_combos
 
-        @property
-        def user(self):
-            return user_entity[self.user_id]
-
         @classmethod
         def get_cgr(cls, structure):
             return cls.__cgr_core.getCGR(structure)
@@ -189,12 +181,6 @@ def load_tables(db, schema, user_entity):
         @classmethod
         def merge_mols(cls, structure):
             return cls.__cgr_core.merge_mols(structure)
-
-        @classmethod
-        def get_fingerprints(cls, structures, bit_array=True):
-            cgrs = [x if isinstance(x, MoleculeContainer) else cls.get_cgr(x) for x in structures]
-            f = cls.__fragmentor.get(cgrs).X
-            return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
 
         @classmethod
         def get_fear(cls, structure, get_cgr=False):
@@ -395,7 +381,7 @@ def load_tables(db, schema, user_entity):
 
         def __init__(self, reaction, molecule, role=False, mapping=None):
             mapping = mapping and self.compressed_mapping(mapping)
-            db.Entity.__init__(self, reaction=reaction, molecule=molecule, product=is_product, _mapping=mapping)
+            db.Entity.__init__(self, reaction=reaction, molecule=molecule, _role=is_product, _mapping=mapping)
 
         @property
         def mapping(self):
@@ -413,7 +399,7 @@ def load_tables(db, schema, user_entity):
 
         __cached_mapping = None
 
-    class ReactionIndex(db.Entity, FingerprintMixin):
+    class ReactionIndex(db.Entity, FingerprintsIndex):
         _table_ = '%s_reaction_index' % schema if DEBUG else (schema, 'reaction_index')
         id = PrimaryKey(int, auto=True)
         reaction = Required('Reaction')
@@ -430,9 +416,7 @@ def load_tables(db, schema, user_entity):
             db.Entity.__init__(self, reaction=reaction, fear=fear, mapless_fear=mapless_fear, bit_array=bs)
             for m in set(structures):
                 self.structures.add(m)
-            self.fingerprint = fp
 
         def update_fingerprint(self, fingerprint):
-            fp, bs = self._init_fingerprint(fingerprint)
-            self.fingerprint = fp
-            self.bit_array = bs
+            self.bit_array = self.get_bits_list(fingerprint)
+            self._flush_fingerprints_cache()

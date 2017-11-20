@@ -31,7 +31,7 @@ class Parser(object):
 
     def parse(self, meta):
         rxds = defaultdict(dict)
-        cleaned = dict(rx_id=int(meta['ROOT:RX_ID']))
+        cleaned = dict(rx_id=int(meta['ROOT:RX_ID']), rxd=[])
 
         for meta_key, meta_value in meta.items():
             meta_value = meta_value.replace("+\n", "")
@@ -42,7 +42,6 @@ class Parser(object):
                 else:
                     rxds[presection[-1]][self.__fields[section]] = meta_value
 
-        cleaned['rxd'] = []
         for x in rxds.values():
             x['media'] = sorted(x.get('media', []))
             cleaned['rxd'].append(x)

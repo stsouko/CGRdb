@@ -18,5 +18,17 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from CGRtools.reactor import CGRreactor
+from ..config import DATA_ISOTOPE, DATA_STEREO
 
 
+class GraphMatcher(object):
+    __cgr_reactor = CGRreactor(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
+
+    @classmethod
+    def get_cgr_matcher(cls, g, h):
+        return cls.__cgr_reactor.get_cgr_matcher(g, h)
+
+    @classmethod
+    def match_structures(cls, g, h):
+        return next(cls.get_cgr_matcher(g, h).isomorphisms_iter())

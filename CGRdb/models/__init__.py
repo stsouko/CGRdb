@@ -18,16 +18,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-
-
-class UserADHOCMeta(type):
-    def __getitem__(cls, item):
-        return cls(item)
-
-
-class UserADHOC(metaclass=UserADHOCMeta):
-    def __init__(self, uid):
-        self.id = uid
+from .user import UserADHOC
 
 
 def load_tables(db, schema, user_entity=None):

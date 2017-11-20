@@ -18,13 +18,12 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-
 from CGRtools.containers import ReactionContainer
 from itertools import product
 
 
 def mixin_factory(db):
-    class ReactionManager(object):
+    class Remap(object):
         def remap(self, structure):
             fear = self.get_fear(structure)
             if self.structure_exists(fear):
@@ -87,4 +86,4 @@ def mixin_factory(db):
             if len(ris) != len(check):
                 raise Exception('number of reaction indexes not equal to number of structure combinations')
 
-    return ReactionManager
+    return Remap

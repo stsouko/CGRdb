@@ -20,16 +20,12 @@
 #
 from datetime import datetime
 from pony.orm import PrimaryKey, Required, Set, Json
+from .user import mixin_factory as uf
 from ..config import DEBUG
 
 
 def load_tables(db, schema, user_entity):
-    class UserMixin(object):
-        @property
-        def user(self):
-            return user_entity[self.user_id]
-
-    class MoleculeProperties(db.Entity, UserMixin):
+    class MoleculeProperties(db.Entity, uf(user_entity)):
         _table_ = '%s_properties' % schema if DEBUG else (schema, 'properties')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -40,7 +36,7 @@ def load_tables(db, schema, user_entity):
         def __init__(self, data, molecule, user):
             db.Entity.__init__(self, user_id=user.id, molecule=molecule, data=data)
 
-    class ReactionConditions(db.Entity, UserMixin):
+    class ReactionConditions(db.Entity, uf(user_entity)):
         _table_ = '%s_conditions' % schema if DEBUG else (schema, 'conditions')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
