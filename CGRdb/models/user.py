@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -21,7 +21,7 @@
 
 
 def mixin_factory(user_entity):
-    class User(object):
+    class User:
         @property
         def user(self):
             return user_entity[self.user_id]

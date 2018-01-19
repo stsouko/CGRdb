@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -20,12 +20,12 @@
 #
 from datetime import datetime
 from pony.orm import PrimaryKey, Required, Set, Json
-from .user import mixin_factory as uf
+from .user import mixin_factory as um
 from ..config import DEBUG
 
 
 def load_tables(db, schema, user_entity):
-    class MoleculeProperties(db.Entity, uf(user_entity)):
+    class MoleculeProperties(db.Entity, um(user_entity)):
         _table_ = '%s_properties' % schema if DEBUG else (schema, 'properties')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -36,7 +36,7 @@ def load_tables(db, schema, user_entity):
         def __init__(self, data, molecule, user):
             db.Entity.__init__(self, user_id=user.id, molecule=molecule, data=data)
 
-    class ReactionConditions(db.Entity, uf(user_entity)):
+    class ReactionConditions(db.Entity, um(user_entity)):
         _table_ = '%s_conditions' % schema if DEBUG else (schema, 'conditions')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -62,3 +62,6 @@ def load_tables(db, schema, user_entity):
         _type = Required(int, default=0, column='type')
         reactions = Set('Reaction', table='%s_reaction_reaction_class' % schema if DEBUG else
                                           (schema, 'reaction_reaction_class'))
+
+
+__all__ = [load_tables.__name__]

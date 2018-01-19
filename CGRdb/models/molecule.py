@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -19,19 +19,19 @@
 #  MA 02110-1301, USA.
 #
 from datetime import datetime
-from operator import itemgetter
 from CGRtools.containers import MoleculeContainer
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, raw_sql
-from .user import mixin_factory as uf
-from ..config import DEBUG, DATA_ISOTOPE, DATA_STEREO
-from ..management.molecule.merge_molecules import mixin_factory as mmm
-from ..management.molecule.new_structure import mixin_factory as nsm
+from pony.orm import PrimaryKey, Required, Optional, Set, Json
+from .user import mixin_factory as um
+from ..config import DEBUG
+# from ..management.molecule.merge_molecules import mixin_factory as mmm
+# from ..management.molecule.new_structure import mixin_factory as nsm
 from ..search.fingerprints import FingerprintsMolecule, FingerprintsIndex
-from ..search.graph_matcher import GraphMatcher
+from ..search.graph_matcher import mixin_factory as gmm
+from ..search.molecule import mixin_factory as msm
 
 
-def load_tables(db, schema, user_entity):
-    class Molecule(db.Entity, GraphMatcher, FingerprintsMolecule, mmm(db), nsm(db), uf(user_entity)):
+def load_tables(db, schema, user_entity, isotope=False, stereo=False):
+    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo), msm(db), um(user_entity)):
         _table_ = '%s_molecule' % schema if DEBUG else (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -42,18 +42,18 @@ def load_tables(db, schema, user_entity):
         classes = Set('MoleculeClass')
         special = Optional(Json)
 
-        def __init__(self, structure, user, fingerprint=None, fear=None):
-            if fear is None:
-                fear = self.get_fear(structure)
+        def __init__(self, structure, user, fingerprint=None, signature=None):
+            if signature is None:
+                signature = self.get_signature(structure)
             if fingerprint is None:
-                fingerprint = self.get_fingerprints([structure], bit_array=False)[0]
+                fingerprint = self.get_fingerprint(structure, bit_array=False)
 
             db.Entity.__init__(self, user_id=user.id)
-            self.__last = MoleculeStructure(self, structure, user, fingerprint, fear)
+            self.__last = MoleculeStructure(self, structure, user, fingerprint, signature)
 
         @classmethod
-        def get_fear(cls, structure):
-            return structure.get_fear_hash(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
+        def get_signature(cls, structure):
+            return structure.get_signature_hash(isotope=isotope, stereo=stereo)
 
         @property
         def structure_raw(self):
@@ -93,97 +93,10 @@ def load_tables(db, schema, user_entity):
             if self.__raw is None:
                 self.__raw = structure
 
-        @classmethod
-        def structure_exists(cls, structure, is_fear=False):
-            return MoleculeStructure.exists(fear=structure if is_fear else cls.get_fear(structure))
-
-        @classmethod
-        def find_structure(cls, structure, is_fear=False):
-            ms = MoleculeStructure.get(fear=structure if is_fear else cls.get_fear(structure))
-            if ms:
-                molecule = ms.molecule
-                if ms.last:  # save if structure is canonical
-                    molecule.last_edition = ms
-
-                return molecule
-
-        @classmethod
-        def find_substructures(cls, structure, number=10):
-            """
-            graph substructure search
-            :param structure: CGRtools MoleculeContainer
-            :param number: top limit of returned results. not guarantee returning of all available data.
-            set bigger value for this
-            :return: list of Molecule entities, list of Tanimoto indexes
-            """
-            tmp = [(x, y) for x, y in zip(*cls.__get_molecules(cls.get_fingerprints([structure], bit_array=False)[0],
-                                                               '@>', number, set_raw=True))
-                   if cls.get_cgr_matcher(x.structure_raw, structure).subgraph_is_isomorphic()]
-            return [x for x, _ in tmp], [x for _, x in tmp]
-
-        @classmethod
-        def find_similar(cls, structure, number=10):
-            """
-            graph similar search
-            :param structure: CGRtools MoleculeContainer
-            :param number: top limit of returned results. not guarantee returning of all available data.
-            set bigger value for this
-            :return: list of Molecule entities, list of Tanimoto indexes
-            """
-            return cls.__get_molecules(cls.get_fingerprints([structure], bit_array=False)[0], '%%', number)
-
-        @staticmethod
-        def __get_molecules(bit_set, operator, number, set_raw=False):
-            """
-            find Molecule entities from MoleculeStructure entities.
-            set to Molecule entities raw_structure property's found MoleculeStructure entities
-            and preload canonical MoleculeStructure entities
-            :param bit_set: fingerprint as a bits set
-            :param operator: raw sql operator
-            :return: Molecule entities
-            """
-            sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
-            sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
-            mis, sts, sis = [], [], []
-            for mi, si, st in sorted(select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in MoleculeStructure
-                                     if raw_sql(sql_select)).limit(number * 2), key=itemgetter(2), reverse=True):
-                if len(mis) == number:
-                    break  # limit of results len to given number
-                if mi not in mis:
-                    mis.append(mi)
-                    sis.append(si)
-                    sts.append(st)
-
-            ms = {x.id: x for x in Molecule.select(lambda x: x.id in mis)}  # preload Molecule entities
-            if set_raw:
-                ss = {x.molecule.id: x for x in MoleculeStructure.select(lambda x: x.id in sis)}
-                not_last = []
-            else:
-                ss = {x.molecule.id: x for x in MoleculeStructure.select(lambda x: x.molecule.id in mis and x.last)}
-                not_last = False
-
-            for mi in mis:
-                molecule = ms[mi]
-                structure = ss[mi]
-                if set_raw:
-                    molecule.raw_edition = structure
-                    if structure.last:
-                        molecule.last_edition = structure
-                    else:
-                        not_last.append(mi)
-                else:
-                    molecule.last_edition = structure
-
-            if not_last:
-                for structure in MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
-                    ms[structure.molecule.id].last_edition = structure
-
-            return [ms[x] for x in mis], sts
-
         __last = None
         __raw = None
 
-    class MoleculeStructure(db.Entity, FingerprintsIndex, uf(user_entity)):
+    class MoleculeStructure(db.Entity, FingerprintsIndex, um(user_entity)):
         _table_ = '%s_molecule_structure' % schema if DEBUG else (schema, 'molecule_structure')
         id = PrimaryKey(int, auto=True)
         user_id = Required(int, column='user')
@@ -192,14 +105,14 @@ def load_tables(db, schema, user_entity):
         date = Required(datetime, default=datetime.utcnow)
         last = Required(bool, default=True)
         data = Required(Json)
-        fear = Required(bytes, unique=True)
+        signature = Required(bytes, unique=True)
         bit_array = Required(Json, column='bit_list')
 
-        def __init__(self, molecule, structure, user, fingerprint, fear):
+        def __init__(self, molecule, structure, user, fingerprint, signature):
             data = structure.pickle()
             bs = self.get_bits_list(fingerprint)
 
-            db.Entity.__init__(self, data=data, user_id=user.id, fear=fear, bit_array=bs, molecule=molecule)
+            db.Entity.__init__(self, data=data, user_id=user.id, signature=signature, bit_array=bs, molecule=molecule)
             self.__cached_structure = structure
 
         @property
@@ -209,3 +122,8 @@ def load_tables(db, schema, user_entity):
             return self.__cached_structure
 
         __cached_structure = None
+
+    return Molecule
+
+
+__all__ = [load_tables.__name__]

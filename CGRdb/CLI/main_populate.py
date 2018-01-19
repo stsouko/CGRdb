@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2016, 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2016-2018 Ramil Nugmanov <stsouko@live.ru>
 #  Copyright 2016 Svetlana Musaeva <sveta_musaeva.95@mail.ru>
 #  This file is part of CGRdb.
 #
@@ -53,15 +53,15 @@ def calc(chunk, database, parser):
 
         rnum = next(raw_data)
         try:
-            ml_fear_str, mr = Reaction.get_mapless_fear(r, get_merged=True)
-            fear_str, cgr = Reaction.get_fear(mr, get_cgr=True)
+            ml_fear_str, mr = Reaction.get_signature(r, get_merged=True)
+            fear_str, cgr = Reaction.get_cgr_signature(mr, get_cgr=True)
         except Exception as e:
             print(e, file=stderr)
         else:
-            rms = dict(substrats=[], products=[])
-            for i in ('substrats', 'products'):
+            rms = dict(reagents=[], products=[])
+            for i in ('reagents', 'products'):
                 for m in r[i]:
-                    ms = Molecule.get_fear(m)
+                    ms = Molecule.get_signature(m)
                     rms[i].append(ms)
                     molecules.append((m, ms, rnum))
 
@@ -91,9 +91,9 @@ def populate(res, database, user):
         user = UserADHOC[user]
         fuck_opt = []
         for m, ms, mf, rnum in mol_data:
-            mol_db = Molecule.find_structure(ms, is_fear=True)
+            mol_db = Molecule.find_structure(ms)
             if not mol_db:
-                Molecule(m, user, fingerprint=mf, fear=ms)
+                Molecule(m, user, fingerprint=mf, signature=ms)
             elif mol_db.structures.count() > 1:
                 fuck_opt.append(rnum)
 
@@ -104,11 +104,11 @@ def populate(res, database, user):
                 next(added_data)
                 if rnum in fuck_opt:  # if molecules has multiple forms don't use precomputed fields. мне влом.
                     Reaction(r, user, conditions=meta.pop('rxd'), special=meta,
-                             substrats_fears=rms['substrats'], products_fears=rms['products'])
+                             reagents_signatures=rms['reagents'], products_signatures=rms['products'])
                 else:
                     Reaction(r, user, conditions=meta.pop('rxd'), special=meta,
-                             fingerprints=[r_fp], fears=[rs], cgrs=[cgr], mapless_fears=[ml_fear],
-                             substrats_fears=rms['substrats'], products_fears=rms['products'])
+                             fingerprints=[r_fp], cgr_signatures=[rs], cgrs=[cgr], signatures=[ml_fear],
+                             reagents_signatures=rms['reagents'], products_signatures=rms['products'])
 
             else:
                 next(upd_data)

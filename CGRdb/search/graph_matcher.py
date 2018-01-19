@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -19,16 +19,21 @@
 #  MA 02110-1301, USA.
 #
 from CGRtools.reactor import CGRreactor
-from ..config import DATA_ISOTOPE, DATA_STEREO
 
 
-class GraphMatcher(object):
-    __cgr_reactor = CGRreactor(isotope=DATA_ISOTOPE, stereo=DATA_STEREO)
+def mixin_factory(isotope=False, stereo=False):
+    class GraphMatcher:
+        __cgr_reactor = CGRreactor(isotope=isotope, stereo=stereo)
 
-    @classmethod
-    def get_cgr_matcher(cls, g, h):
-        return cls.__cgr_reactor.get_cgr_matcher(g, h)
+        @classmethod
+        def get_matcher(cls, g, h):
+            return cls.__cgr_reactor.get_cgr_matcher(g, h)
 
-    @classmethod
-    def match_structures(cls, g, h):
-        return next(cls.get_cgr_matcher(g, h).isomorphisms_iter())
+        @classmethod
+        def match_structures(cls, g, h):
+            return next(cls.get_matcher(g, h).isomorphisms_iter())
+
+    return GraphMatcher
+
+
+__all__ = [mixin_factory.__name__]

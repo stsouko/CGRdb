@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -20,24 +20,33 @@
 #
 from hashlib import md5
 from bitstring import BitArray
-from CGRtools.containers import MoleculeContainer
+from CGRtools.containers import CGRContainer
 from CIMtools.descriptors.fragmentor import Fragmentor
 from ..config import (FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL,
                       FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH,
                       FP_SIZE, FP_ACTIVE_BITS)
 
 
-class Fingerprints(object):
+class Fingerprints:
     @classmethod
     def descriptors_to_fingerprints(cls, descriptors, bit_array=True):
         return cls.__get_fingerprints(descriptors, bit_array=bit_array)
+
+    @classmethod
+    def get_fingerprints(cls, structures, bit_array=True):
+        f = cls._get_descriptors(structures)
+        return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
+
+    @classmethod
+    def get_fingerprint(cls, structures, bit_array=True):
+        return cls.get_fingerprints([structures], bit_array)[0]
 
     @staticmethod
     def __get_fingerprints(df, bit_array=True):
         bits_map = {}
         for fragment in df.columns:
             b = BitArray(md5(fragment.encode()).digest())
-            bits_map[fragment] = [b[r * FP_SIZE: (r + 1) * FP_SIZE].uint for r in FP_ACTIVE_BITS]
+            bits_map[fragment] = [b[r * FP_SIZE: (r + 1) * FP_SIZE].uint for r in range(FP_ACTIVE_BITS)]
 
         result = []
         for _, s in df.iterrows():
@@ -60,9 +69,8 @@ class Fingerprints(object):
 
 class FingerprintsMolecule(Fingerprints):
     @classmethod
-    def get_fingerprints(cls, structures, bit_array=True):
-        f = cls.__fragmentor.get(structures).X
-        return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
+    def _get_descriptors(cls, structures):
+        return cls.__fragmentor.get(structures).X
 
     __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_MOL,
                               workpath=WORKPATH, min_length=FRAGMENT_MIN_MOL, max_length=FRAGMENT_MAX_MOL,
@@ -71,19 +79,18 @@ class FingerprintsMolecule(Fingerprints):
 
 class FingerprintsReaction(Fingerprints):
     @classmethod
-    def get_fingerprints(cls, structures, bit_array=True):
-        cgrs = [x if isinstance(x, MoleculeContainer) else cls.get_cgr(x) for x in structures]
-        f = cls.__fragmentor.get(cgrs).X
-        return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
+    def _get_descriptors(cls, structures):
+        cgrs = [x if isinstance(x, CGRContainer) else cls.get_cgr(x) for x in structures]
+        return cls.__fragmentor.get(cgrs).X
 
     __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_CGR,
                               min_length=FRAGMENT_MIN_CGR, max_length=FRAGMENT_MAX_CGR, workpath=WORKPATH,
                               cgr_dynbonds=FRAGMENT_DYNBOND_CGR, useformalcharge=True)
 
 
-class FingerprintsIndex(object):
-    @classmethod
-    def get_bits_list(cls, fingerprint):
+class FingerprintsIndex:
+    @staticmethod
+    def get_bits_list(fingerprint):
         return list(fingerprint.findall([1]) if isinstance(fingerprint, BitArray) else fingerprint)
 
     @property
@@ -91,6 +98,11 @@ class FingerprintsIndex(object):
         if self.__cached_fingerprint is None:
             self.__cached_fingerprint = self.__list2bit_array(self.bit_array)
         return self.__cached_fingerprint
+
+    @fingerprint.setter
+    def fingerprint(self, fingerprint):
+        self.bit_array = self.get_bits_list(fingerprint)
+        self._flush_fingerprints_cache()
 
     def _flush_fingerprints_cache(self):
         self.__cached_fingerprint = None
@@ -102,3 +114,6 @@ class FingerprintsIndex(object):
         return fp
 
     __cached_fingerprint = None
+
+
+__all__ = [FingerprintsMolecule.__name__, FingerprintsReaction.__name__, FingerprintsIndex.__name__]
