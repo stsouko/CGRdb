@@ -24,14 +24,14 @@ from pony.orm import PrimaryKey, Required, Optional, Set, Json
 from .user import mixin_factory as um
 from ..config import DEBUG
 # from ..management.molecule.merge_molecules import mixin_factory as mmm
-# from ..management.molecule.new_structure import mixin_factory as nsm
+from ..management.molecule.new_structure import mixin_factory as nsm
 from ..search.fingerprints import FingerprintsMolecule, FingerprintsIndex
 from ..search.graph_matcher import mixin_factory as gmm
 from ..search.molecule import mixin_factory as msm
 
 
 def load_tables(db, schema, user_entity, isotope=False, stereo=False):
-    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo), msm(db), um(user_entity)):
+    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo), msm(db), um(user_entity), nsm(db)):
         _table_ = '%s_molecule' % schema if DEBUG else (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
@@ -79,19 +79,16 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
 
         @property
         def raw_edition(self):
-            if self.__raw is None:
-                raise Exception('Available in entities from queries results only')
+            assert self.__raw is not None, 'available in entities from queries results only'
             return self.__raw
 
         @last_edition.setter
         def last_edition(self, structure):
-            if self.__last is None:
-                self.__last = structure
+            self.__last = structure
 
         @raw_edition.setter
         def raw_edition(self, structure):
-            if self.__raw is None:
-                self.__raw = structure
+            self.__raw = structure
 
         __last = None
         __raw = None

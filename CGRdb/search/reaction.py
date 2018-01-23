@@ -61,7 +61,7 @@ def mixin_factory(db):
             cgr = cls.get_cgr(structure)
             rxn, tan = [], []
             for x, y in zip(*cls.__get_reactions(cgr, '@>', number, set_raw=True, overload=3)):
-                if any(cls.get_matcher(rs, cgr).subgraph_is_isomorphic() for rs in x.cgrs_raw):
+                if any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
                     rxn.append(x)
                     tan.append(y)
             return rxn, tan

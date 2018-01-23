@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -18,63 +19,100 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from collections import defaultdict
+from itertools import product
+from pony.orm import select, flush
 
 
 def mixin_factory(db):
-    class NewStructure(object):
+    class NewStructure:
         def new_structure(self, structure, user=None):
-            if self.last_edition == structure:
-                raise Exception('structure already exists')
-            if self.structure_exists(structure):
-                self.last_edition = structure
-                raise Exception('new canonical structure established')
-            try:
-                fear = self.get_fear(structure)
-                fingerprint = self.get_fingerprints([structure], bit_array=False)[0]
-            except:
-                raise Exception('structure invalid')
+            """
+            Add new representation of molecule into database / set structure as canonical if it already exists.
+            Generate new indexes for all reaction with this molecule(only for new structure) and add them into database.
 
-            mrs = list(self.reactions.order_by(lambda x: x.id))
-            mis = set(mr.molecule.id for mr in mrs)
-            ris = set(mr.reaction.id for mr in mrs)
-            rs = {x.id: x for x in db.Reaction.select(lambda x: x.id in ris)}
-            mss = {}
-            for ms in list(db.MoleculeStructure.select(lambda x: x.molecule.id in mis)):
-                mss.setdefault(ms.molecule.id, []).append(ms)
+            :param structure: CGRtools MoleculeContainer. Structure must be mapped as it's molecule in database.
+            :param user: user entity
+            """
+            assert sorted(self.structure) == sorted(structure), 'structure has invalid mapping'
 
-            new_ms = db.MoleculeStructure(self, structure, self.user if user is None else user, fingerprint, fear)
-            mss[self.id].append(new_ms)
+            signature = self.get_signature(structure)
+            in_db = self.find_structure(signature)
+            if in_db:
+                assert in_db == self, 'structure already exists in another Molecule'
+                assert in_db.last_edition != in_db.raw_edition, 'structure already canonical in current Molecule'
 
-            mcs, sis = {}, {}
-            for mr in mrs:
-                ri = mr.reaction.id
-                mi = mr.molecule.id
-                ss, ps, ns, np = mcs.get(ri) or mcs.setdefault(ri, ([], [], [], []))
-                if mi == self.id:
-                    if mr.product:
-                        np.append(len(ps))
-                    else:
-                        ns.append(len(ss))
+                in_db.last_edition.last = False
+                in_db.raw_edition.last = True
+                in_db.last_edition = in_db.raw_edition
+                return True
 
-                if mr.product:
-                    ps.append((mi, mr.mapping))
-                else:
-                    ss.append((mi, mr.mapping))
+            fingerprint = self.get_fingerprint(structure, bit_array=False)
 
-            for ri, (ps, ss, ns, np) in mcs.items():
-                substratslen = len(ss)
-                nsi = ns + [substratslen + x for x in np]
-                combos = [[(x, x.structure.remap(map_, copy=True)) for x in mss[mi]] for mi, map_ in (ss + ps)]
+            # now structure look like valid. starting addition
 
-                for i in nsi:
-                    copy = combos.copy()
-                    copy[i] = [copy[i][-1]]
+            reactions, molecules_structures, reactions_reagents_len = self._preload_reactions_structures()
+            new_structure = db.MoleculeStructure(self, structure, self.user if user is None else user,
+                                                 fingerprint, signature)
+            self.last_edition.last = False
+            self.last_edition = new_structure
+            flush()
 
-                    for combo in product(*copy):
-                        cs = ReactionContainer(substrats=[s for _, s in combo[:substratslen]],
-                                               products=[s for _, s in combo[substratslen:]])
-                        mf, mgs = db.Reactions.get_mapless_fear(cs, get_merged=True)
-                        fs, cgr = db.Reactions.get_fear(mgs, get_cgr=True)
-                        fp = db.Reactions.get_fingerprints([cgr], bit_array=False)[0]
-                        db.ReactionIndex(rs[ri], set(x for x, _ in combo), fp, fs, mf)
+            combinations = self._reactions_combinations(reactions, molecules_structures, [new_structure], self)
+
+            for rid, combos in combinations.items():
+                structure_combinations = db.Reaction._reactions_from_combinations(combos, reactions_reagents_len[rid])
+                signatures, cgr_signatures, fingerprints, cgrs = \
+                    db.Reaction._prepare_reaction_sf(structure_combinations, get_cgr=True)
+
+                for c, r, cc, fp, cs, s in zip(combos, structure_combinations, cgrs, fingerprints, cgr_signatures,
+                                               signatures):
+                    cl = [x for _, x in c]
+                    db.ReactionIndex(rid, cl, fp, cs, s)
+                flush()
+
+        @staticmethod
+        def _reactions_combinations(reactions, molecules_structures, new_structures, molecule):
+            molecule_id = molecule.id
+            combos = defaultdict(list)
+            for rid, mrs in reactions.items():
+                ind = [n for n, x in enumerate(mrs) if x.molecule.id == molecule_id]
+                assert ind, 'reaction has not contain updating molecules'
+                for n, i in enumerate(ind):
+                    tmp = []
+                    for m, mr in enumerate(mrs):
+                        if m == n:
+                            mss = new_structures
+                        elif m in ind:
+                            mss = molecules_structures[mr.molecule.id] + new_structures
+                        else:
+                            mss = molecules_structures[mr.molecule.id]
+
+                        tmp.append([(ms.structure.remap(mr.mapping, copy=True), ms) for ms in mss])
+                    combos[rid].extend(product(*tmp))
+
+            return dict(combos)
+
+        def _preload_reactions_structures(self):
+            # NEED PR
+            # select(y for x in db.MoleculeReaction if x.molecule == self for y in db.MoleculeReaction if
+            #        x.reaction == y.reaction).order_by(lambda x: x.id)
+            reactions = defaultdict(lambda: {True: [], False: []})
+            molecules = set()
+            for mr in select(x for x in db.MoleculeReaction if x.reaction in
+                             select(y.reaction for y in db.MoleculeReaction
+                                    if y.molecule == self)).order_by(lambda x: x.id):
+                reactions[mr.reaction.id][mr.is_product].append(mr)
+                molecules.add(mr.molecule.id)
+
+            molecules_structures = defaultdict(list)
+            for ms in select(x for x in db.MoleculeStructure if x.molecule.id in molecules):
+                molecules_structures[ms.molecule.id].append(ms)
+
+            return {k: v[False] + v[True] for k, v in reactions.items()}, dict(molecules_structures), \
+                   {k: len(v[False]) for k, v in reactions.items()}
+
     return NewStructure
+
+
+__all__ = [mixin_factory.__name__]

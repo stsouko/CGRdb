@@ -33,6 +33,18 @@ def mixin_factory(isotope=False, stereo=False):
         def match_structures(cls, g, h):
             return next(cls.get_matcher(g, h).isomorphisms_iter())
 
+        @classmethod
+        def match_substructures(cls, g, h):
+            return next(cls.get_matcher(g, h).subgraph_isomorphisms_iter())
+
+        @classmethod
+        def structures_equivalent(cls, g, h):
+            return cls.get_matcher(g, h).is_isomorphic()
+
+        @classmethod
+        def is_substructure(cls, g, h):
+            return cls.get_matcher(g, h).subgraph_is_isomorphic()
+
     return GraphMatcher
 
 

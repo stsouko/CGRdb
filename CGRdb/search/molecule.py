@@ -52,7 +52,7 @@ def mixin_factory(db):
             """
             mol, tan = [], []
             for x, y in zip(*cls.__get_molecules(structure, '@>', number, set_raw=True, overload=3)):
-                if cls.get_matcher(x.structure_raw, structure).subgraph_is_isomorphic():
+                if cls.is_substructure(x.structure_raw, structure):
                     mol.append(x)
                     tan.append(y)
             return mol, tan

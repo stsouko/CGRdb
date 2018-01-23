@@ -68,10 +68,9 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
                                                            products_signatures=products_signatures)
 
             reagents_len = len(structure.reagents)
-            structure_combinations = [ReactionContainer(reagents=[s for s, _ in x[:reagents_len]],
-                                                        products=[s for s, _ in x[reagents_len:]]) for x in combos]
+            structure_combinations = self._reactions_from_combinations(combos, reagents_len)
             signatures, cgr_signatures, fingerprints, cgrs = \
-                self.__prepare_reaction_sfc(signatures, cgr_signatures, fingerprints, cgrs, structure_combinations)
+                self._prepare_reaction_sf(structure_combinations, cgrs, signatures, cgr_signatures, fingerprints, True)
 
             db.Entity.__init__(self, user_id=user.id)
 
@@ -93,13 +92,21 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
             if special:
                 self.special = special
 
-        def __prepare_reaction_sfc(self, signatures, cgr_signatures, fingerprints, cgrs, structure_combinations):
-            combo_len = len(structure_combinations)
+        @staticmethod
+        def _reactions_from_combinations(combinations, reagents_len):
+            return [ReactionContainer(reagents=[s[0] for s in x[:reagents_len]],
+                                      products=[s[0] for s in x[reagents_len:]])
+                    for x in combinations]
+
+        @classmethod
+        def _prepare_reaction_sf(cls, structures, cgrs=None, signatures=None, cgr_signatures=None, fingerprints=None,
+                                 get_cgr=False):
+            combo_len = len(structures)
 
             if signatures is None or len(signatures) != combo_len:
                 signatures, merged = [], []
-                for x in structure_combinations:
-                    s, ms = self.get_signature(x, get_merged=True)
+                for x in structures:
+                    s, ms = cls.get_signature(x, get_merged=True)
                     signatures.append(s)
                     merged.append(ms)
             else:
@@ -107,43 +114,20 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
 
             if cgr_signatures is None or len(cgr_signatures) != combo_len:
                 cgr_signatures, cgrs = [], []
-                for x in merged or structure_combinations:
-                    s, c = self.get_cgr_signature(x, get_cgr=True)
+                for x in merged or structures:
+                    s, c = cls.get_cgr_signature(x, get_cgr=True)
                     cgr_signatures.append(s)
                     cgrs.append(c)
             elif cgrs is None or len(cgrs) != combo_len:
-                cgrs = [self.get_cgr(x) for x in merged or structure_combinations]
+                cgrs = [cls.get_cgr(x) for x in merged or structures]
 
             if fingerprints is None or len(fingerprints) != combo_len:
-                fingerprints = self.get_fingerprints(cgrs, bit_array=False)
+                fingerprints = cls.get_fingerprints(cgrs, bit_array=False)
 
-            return signatures, cgr_signatures, fingerprints, cgrs
+            if get_cgr:
+                return signatures, cgr_signatures, fingerprints, cgrs
 
-        @staticmethod
-        def __prepare_molecules_signatures(structure, reagents_signatures=None, products_signatures=None):
-            if not (reagents_signatures and products_signatures and
-                    len(reagents_signatures) == len(structure.reagents) and
-                    len(products_signatures) == len(structure.products)):
-                reagents_signatures = [db.Molecule.get_signature(x) for x in structure.reagents]
-                products_signatures = [db.Molecule.get_signature(x) for x in structure.products]
-
-            signatures_set = set(reagents_signatures + products_signatures)
-            structure_signatures = dict(reagents=reagents_signatures, products=products_signatures)
-            return signatures_set, structure_signatures
-
-        @staticmethod
-        def __preload_molecules(signatures_set):
-            # preload molecules entities. pony caching it.
-            list(select(x.molecule for x in db.MoleculeStructure if x.signature in signatures_set))
-            # preload all molecules structures entities
-            molecule_structures, signature_molecule_structure = defaultdict(list), {}
-            for ms in select(y for x in db.MoleculeStructure if x.signature in signatures_set
-                             for y in db.MoleculeStructure if y.molecule == x.molecule):
-                if ms.signature in signatures_set:
-                    signature_molecule_structure[ms.signature] = ms
-                else:
-                    molecule_structures[ms.molecule].append(ms)
-            return molecule_structures, signature_molecule_structure
+            return signatures, cgr_signatures, fingerprints
 
         def __prepare_molecules_batch(self, structure, user, reagents_signatures=None, products_signatures=None):
             new_mols, batch = OrderedDict(), {}
@@ -191,6 +175,35 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
                     all_combos[n] = [(x, m.last_edition)]
 
             return batch, list(product(*(all_combos[x] for x in sorted(all_combos))))
+
+        @staticmethod
+        def __prepare_molecules_signatures(structure, reagents_signatures=None, products_signatures=None):
+            if not (reagents_signatures and products_signatures and
+                    len(reagents_signatures) == len(structure.reagents) and
+                    len(products_signatures) == len(structure.products)):
+                reagents_signatures = [db.Molecule.get_signature(x) for x in structure.reagents]
+                products_signatures = [db.Molecule.get_signature(x) for x in structure.products]
+
+            signatures_set = set(reagents_signatures + products_signatures)
+            structure_signatures = dict(reagents=reagents_signatures, products=products_signatures)
+            return signatures_set, structure_signatures
+
+        @staticmethod
+        def __preload_molecules(signatures_set):
+            # preload molecules entities. pony caching it.
+            list(select(x.molecule for x in db.MoleculeStructure if x.signature in signatures_set))
+            # preload all molecules structures entities
+            molecule_structures, signature_molecule_structure = defaultdict(list), {}
+            for ms in select(x for x in db.MoleculeStructure if x.molecule in
+                             select(y.molecule for y in db.MoleculeStructure if y.signature in signatures_set)):
+                # NEED PR
+                # select(y for x in db.MoleculeStructure if x.signature in signatures_set
+                #        for y in db.MoleculeStructure if y.molecule == x.molecule)
+                if ms.signature in signatures_set:
+                    signature_molecule_structure[ms.signature] = ms
+                else:
+                    molecule_structures[ms.molecule].append(ms)
+            return dict(molecule_structures), signature_molecule_structure
 
         @classmethod
         def get_cgr(cls, structure):
@@ -242,8 +255,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
 
         @property
         def structures_raw(self):
-            if self.__cached_structures_raw is None:
-                raise Exception('Available in entities from queries results only')
+            assert self.__cached_structures_raw is not None, 'available in entities from queries results only'
             return self.__cached_structures_raw
 
         @structure.setter
