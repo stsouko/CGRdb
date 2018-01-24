@@ -59,15 +59,20 @@ def mixin_factory(db):
             flush()
 
             combinations = self._reactions_combinations(reactions, molecules_structures, [new_structure], self)
-
             for rid, combos in combinations.items():
                 structure_combinations = db.Reaction._reactions_from_combinations(combos, reactions_reagents_len[rid])
+
                 signatures, cgr_signatures, fingerprints, cgrs = \
                     db.Reaction._prepare_reaction_sf(structure_combinations, get_cgr=True)
 
+                doubles = []
                 for c, r, cc, fp, cs, s in zip(combos, structure_combinations, cgrs, fingerprints, cgr_signatures,
                                                signatures):
-                    cl = [x for _, x in c]
+                    if cs in doubles:
+                        continue
+                    doubles.append(cs)
+
+                    cl = {x for _, x in c}
                     db.ReactionIndex(rid, cl, fp, cs, s)
                 flush()
 
@@ -78,12 +83,13 @@ def mixin_factory(db):
             for rid, mrs in reactions.items():
                 ind = [n for n, x in enumerate(mrs) if x.molecule.id == molecule_id]
                 assert ind, 'reaction has not contain updating molecules'
-                for n, i in enumerate(ind):
+                while ind:
+                    i = ind.pop(0)
                     tmp = []
-                    for m, mr in enumerate(mrs):
-                        if m == n:
+                    for n, mr in enumerate(mrs):
+                        if n == i:
                             mss = new_structures
-                        elif m in ind:
+                        elif n in ind:
                             mss = molecules_structures[mr.molecule.id] + new_structures
                         else:
                             mss = molecules_structures[mr.molecule.id]
