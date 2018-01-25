@@ -68,22 +68,23 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
                                                            products_signatures=products_signatures)
 
             reagents_len = len(structure.reagents)
-            structure_combinations = self._reactions_from_combinations(combos, reagents_len)
-            signatures, cgr_signatures, fingerprints, cgrs = \
-                self._prepare_reaction_sf(structure_combinations, cgrs, signatures, cgr_signatures, fingerprints, True)
+            signatures, cgr_signatures, fingerprints, structures, cgrs = \
+                self._prepare_reaction_sf(combos, reagents_len, cgrs, signatures, cgr_signatures, fingerprints, True)
 
             db.Entity.__init__(self, user_id=user.id)
 
             for m, is_p, mapping in (batch[x] for x in sorted(batch)):
                 MoleculeReaction(self, m, is_product=is_p, mapping=mapping)
 
-            for c, r, cc, fp, cs, s in zip(combos, structure_combinations, cgrs, fingerprints, cgr_signatures,
-                                           signatures):
-                cl = [x for _, x in c]
-                ReactionIndex(self, cl, fp, cs, s)
-                if self.__cached_structure is None and all(x.last for x in cl):
-                    self.__cached_structure = r
-                    self.__cached_cgr = cc
+            self._create_reaction_indexes(combos, fingerprints, cgr_signatures, signatures)
+
+            for c, r, cc in zip(combos, structures, cgrs):
+                if self.__cached_structure is None:
+                    if all(x[1].last for x in c):
+                        self.__cached_structure = r
+                        self.__cached_cgr = cc
+                else:
+                    break
 
             if conditions:
                 for c in conditions:
@@ -92,15 +93,18 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
             if special:
                 self.special = special
 
-        @staticmethod
-        def _reactions_from_combinations(combinations, reagents_len):
-            return [ReactionContainer(reagents=[s[0] for s in x[:reagents_len]],
-                                      products=[s[0] for s in x[reagents_len:]])
-                    for x in combinations]
+        def _create_reaction_indexes(self, combos, fingerprints, cgr_signatures, signatures):
+            for c, fp, cs, s in zip(combos, fingerprints, cgr_signatures, signatures):
+                ReactionIndex(self, {x[1] for x in c}, fp, cs, s)
 
         @classmethod
-        def _prepare_reaction_sf(cls, structures, cgrs=None, signatures=None, cgr_signatures=None, fingerprints=None,
-                                 get_cgr=False):
+        def _prepare_reaction_sf(cls, combinations, reagents_len, cgrs=None, signatures=None, cgr_signatures=None,
+                                 fingerprints=None, get_structure_cgr=False):
+            """
+            prepare index data for structures with filtering of automorphic structures
+            """
+            structures = [ReactionContainer(reagents=[s[0] for s in x[:reagents_len]],
+                                            products=[s[0] for s in x[reagents_len:]]) for x in combinations]
             combo_len = len(structures)
 
             if signatures is None or len(signatures) != combo_len:
@@ -124,16 +128,26 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
             if fingerprints is None or len(fingerprints) != combo_len:
                 fingerprints = cls.get_fingerprints(cgrs, bit_array=False)
 
-            if get_cgr:
-                return signatures, cgr_signatures, fingerprints, cgrs
+            clean_signatures, clean_cgr_signatures, clean_fingerprints = [], [], []
+            clean_cgrs, clean_structures = [], []
+            for s, cs, f, c, r in zip(signatures, cgr_signatures, fingerprints, cgrs, structures):
+                if cs not in clean_cgr_signatures:
+                    clean_signatures.append(s)
+                    clean_cgr_signatures.append(cs)
+                    clean_fingerprints.append(f)
+                    clean_cgrs.append(c)
+                    clean_structures.append(r)
 
-            return signatures, cgr_signatures, fingerprints
+            if get_structure_cgr:
+                return clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_structures, clean_cgrs
+            return clean_signatures, clean_cgr_signatures, clean_fingerprints
 
-        def __prepare_molecules_batch(self, structure, user, reagents_signatures=None, products_signatures=None):
+        @classmethod
+        def __prepare_molecules_batch(cls, structure, user, reagents_signatures=None, products_signatures=None):
             new_mols, batch = OrderedDict(), {}
-            signatures_set, structure_signatures = self.__prepare_molecules_signatures(structure, reagents_signatures,
-                                                                                       products_signatures)
-            molecule_structures, signature_molecule_structure = self.__preload_molecules(signatures_set)
+            signatures_set, structure_signatures = cls.__prepare_molecules_signatures(structure, reagents_signatures,
+                                                                                      products_signatures)
+            molecule_structures, signature_molecule_structure = cls.__preload_molecules(signatures_set)
 
             m_count, all_combos = count(), {}
             for i, is_p in (('reagents', False), ('products', True)):
@@ -141,7 +155,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
                     ms = signature_molecule_structure.get(s)
                     n = next(m_count)
                     if ms:
-                        mapping = self.match_structures(ms.structure, x)
+                        mapping = cls.match_structures(ms.structure, x)
                         batch[n] = (ms.molecule, is_p, mapping)
 
                         tmp = [(x, ms)]
@@ -169,7 +183,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
                         mapping = None
                     else:
                         m = dups[s]
-                        mapping = self.match_structures(m.structure, x)
+                        mapping = cls.match_structures(m.structure, x)
 
                     batch[n] = (m, is_p, mapping)
                     all_combos[n] = [(x, m.last_edition)]
@@ -263,8 +277,8 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
             self.__cached_structure = structure
 
         @structures_raw.setter
-        def structures_raw(self, structure):
-            self.__cached_structures_raw = structure
+        def structures_raw(self, structures):
+            self.__cached_structures_raw = structures
 
         def add_conditions(self, data, user):
             db.ReactionConditions(data, self, user)
@@ -294,6 +308,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         @mapping.setter
         def mapping(self, mapping):
             self._mapping = self.compressed_mapping(mapping)
+            self.__cached_mapping = None
 
         @staticmethod
         def compressed_mapping(mapping):
@@ -310,7 +325,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
 
         cgr_signature = Required(bytes, unique=True)
         signature = Required(bytes)
-        bit_array = Required(Json, column='bit_list')
+        bit_array = Required(Json, column='bit_list', optimistic=False)
 
         def __init__(self, reaction, structures, fingerprint, cgr_signature, signature):
             bs = self.get_bits_list(fingerprint)

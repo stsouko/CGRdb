@@ -94,7 +94,7 @@ def populate(res, database, user):
             mol_db = Molecule.find_structure(ms)
             if not mol_db:
                 Molecule(m, user, fingerprint=mf, signature=ms)
-            elif mol_db.structures.count() > 1:
+            elif mol_db._structures.count() > 1:
                 fuck_opt.append(rnum)
 
         for r, rs, ml_fear, rnum, cgr, r_fp, rms, meta in rxn_data:

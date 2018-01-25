@@ -23,7 +23,7 @@ from CGRtools.containers import MoleculeContainer
 from pony.orm import PrimaryKey, Required, Optional, Set, Json
 from .user import mixin_factory as um
 from ..config import DEBUG
-# from ..management.molecule.merge_molecules import mixin_factory as mmm
+from ..management.molecule.merge_molecules import mixin_factory as mmm
 from ..management.molecule.new_structure import mixin_factory as nsm
 from ..search.fingerprints import FingerprintsMolecule, FingerprintsIndex
 from ..search.graph_matcher import mixin_factory as gmm
@@ -31,12 +31,12 @@ from ..search.molecule import mixin_factory as msm
 
 
 def load_tables(db, schema, user_entity, isotope=False, stereo=False):
-    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo), msm(db), um(user_entity), nsm(db)):
+    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo), msm(db), um(user_entity), mmm(db), nsm(db)):
         _table_ = '%s_molecule' % schema if DEBUG else (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
-        structures = Set('MoleculeStructure')
+        _structures = Set('MoleculeStructure')
         reactions = Set('MoleculeReaction')
         properties = Set('MoleculeProperties')
         classes = Set('MoleculeClass')
@@ -74,7 +74,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         @property
         def last_edition(self):
             if self.__last is None:
-                self.__last = self.structures.filter(lambda x: x.last).first()
+                self.__last = self._structures.filter(lambda x: x.last).first()
             return self.__last
 
         @property
@@ -101,9 +101,9 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         reaction_indexes = Set('ReactionIndex')
         date = Required(datetime, default=datetime.utcnow)
         last = Required(bool, default=True)
-        data = Required(Json)
+        data = Required(Json, optimistic=False)
         signature = Required(bytes, unique=True)
-        bit_array = Required(Json, column='bit_list')
+        bit_array = Required(Json, column='bit_list', optimistic=False)
 
         def __init__(self, molecule, structure, user, fingerprint, signature):
             data = structure.pickle()

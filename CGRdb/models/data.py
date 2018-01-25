@@ -52,7 +52,7 @@ def load_tables(db, schema, user_entity):
         id = PrimaryKey(int, auto=True)
         name = Required(str)
         _type = Required(int, default=0, column='type')
-        reactions = Set('Molecule', table='%s_molecule_molecule_class' % schema if DEBUG else
+        molecules = Set('Molecule', table='%s_molecule_molecule_class' % schema if DEBUG else
                                           (schema, 'molecule_molecule_class'))
 
     class ReactionClass(db.Entity):
