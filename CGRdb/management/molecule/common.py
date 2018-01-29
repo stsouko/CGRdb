@@ -36,6 +36,7 @@ def mixin_factory(db):
                     i = ind.pop(0)
                     tmp = []
                     for n, mr in enumerate(mrs):
+                        mapping = mr.mapping
                         if n == i:
                             mss = new_structures
                         elif n in ind:
@@ -43,7 +44,7 @@ def mixin_factory(db):
                         else:
                             mss = molecules_structures[mr.molecule.id]
 
-                        tmp.append([(ms.structure.remap(mr.mapping, copy=True), ms) for ms in mss])
+                        tmp.append([(ms.structure.remap(mapping, copy=True), ms) for ms in mss])
                     combos[r].extend(product(*tmp))
 
             return dict(combos)
@@ -67,13 +68,6 @@ def mixin_factory(db):
 
             return {k: v[False] + v[True] for k, v in reactions.items()}, dict(molecules_structures), \
                    {k: len(v[False]) for k, v in reactions.items()}
-
-        @staticmethod
-        def _create_reactions_indexes(combinations, reactions_reagents_len):
-            for r, combos in combinations.items():
-                signatures, cgr_signatures, fingerprints = \
-                    r._prepare_reaction_sf(combos, reactions_reagents_len[r])
-                r._create_reaction_indexes(combos, fingerprints, cgr_signatures, signatures)
 
     return MoleculeManagement
 

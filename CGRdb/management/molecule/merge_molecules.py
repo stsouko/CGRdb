@@ -19,7 +19,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from pony.orm import flush, left_join
+from collections import defaultdict
+from itertools import product
 from .common import mixin_factory as mmm
 
 
@@ -59,19 +60,55 @@ def mixin_factory(db):
                     if ms.last:
                         ms.last = False
 
-            # create indexes for merged structures in reactions
-            left_cgr_signatures = list(left_join(y.cgr_signature for x in db.MoleculeStructure if x in left_structures
-                                                 for y in x.reaction_indexes))
-            right_cgr_signatures = list(left_join(y.cgr_signature for x in db.MoleculeStructure if x in right_structures
-                                                  for y in x.reaction_indexes))
+            # preload left and right reactions and structures
+            right_reactions, right_molecules_structures, right_reagents_len = self._preload_reactions_structures()
+            left_reactions, left_molecules_structures, left_reagents_len = in_db._preload_reactions_structures()
 
-            right_reactions, molecules_structures, reactions_reagents_len = self._preload_reactions_structures()
-            combinations = self._reactions_combinations(right_reactions, molecules_structures, left_structures, self)
-            self._create_reactions_indexes(combinations, reactions_reagents_len, left_cgr_signatures)
+            # reactions contains both merging molecule
+            rs = set(right_reactions)
+            mixed_reactions = rs.intersection(left_reactions)
 
-            left_reactions, molecules_structures, reactions_reagents_len = in_db._preload_reactions_structures()
-            combinations = self._reactions_combinations(left_reactions, molecules_structures, right_structures, in_db)
-            self._create_reactions_indexes(combinations, reactions_reagents_len, right_cgr_signatures)
+            # get existing signatures
+            exists_cgr_signatures = {}
+            for ri in db.ReactionIndex.select(lambda x: x.reaction in rs.union(left_reactions)):
+                exists_cgr_signatures[ri.cgr_signature] = ri.reaction
+
+            right_combinations = self._reactions_combinations({r: mrs for r, mrs in right_reactions.items()
+                                                               if r not in mixed_reactions},
+                                                              right_molecules_structures, left_structures, self)
+            right_doubles = self.__create_reactions_indexes(right_combinations, right_reagents_len,
+                                                            exists_cgr_signatures)
+            left_unique = {r: mrs for r, mrs in left_reactions.items()
+                           if r not in right_doubles and r not in mixed_reactions}
+            if left_unique:  # update indexes of unique left reactions
+                left_combinations = self._reactions_combinations(left_unique, left_molecules_structures,
+                                                                 right_structures, in_db)
+                left_doubles = self.__create_reactions_indexes(left_combinations, left_reagents_len,
+                                                               exists_cgr_signatures)
+            else:
+                left_doubles = {}
+
+            mixed_unique = {r: mrs for r, mrs in right_reactions.items()
+                            if r in mixed_reactions and r not in right_doubles and r not in left_doubles}
+            if mixed_unique:
+                mixed_combinations = self.__mixed_reactions_combinations(mixed_unique, right_molecules_structures,
+                                                                         self, in_db)
+                self.__create_mixed_reactions_indexes(mixed_combinations, right_reagents_len, exists_cgr_signatures)
+
+            for l, r in right_doubles.items():
+                for i in l.reaction_indexes:
+                    i.reaction = r
+                for c in l.conditions:
+                    c.reaction = r
+                # todo: classes
+                l.delete()
+            for l, r in left_doubles.items():
+                for i in l.reaction_indexes:
+                    i.reaction = r
+                for c in l.conditions:
+                    c.reaction = r
+                # todo: classes
+                l.delete()
 
             for ms in left_structures:  # move structures
                 ms.molecule = self
@@ -82,9 +119,70 @@ def mixin_factory(db):
             for mp in in_db.properties:  # move properties
                 mp.molecule = self
 
-            flush()
+            # todo: classes
+
             in_db.delete()
-            return {'structures': len(left_structures), }
+            return {'structures': len(left_structures), 'reactions': len(left_reactions), 'mixed': len(mixed_reactions)}
+
+        @staticmethod
+        def __mixed_reactions_combinations(reactions, molecules_structures, right_molecule, left_molecule):
+            combos = defaultdict(list)
+            right_molecule_id = right_molecule.id
+            left_molecule_id = left_molecule.id
+            left_right_ids = (right_molecule_id, left_molecule_id)
+            combo_structures = molecules_structures[right_molecule_id] + molecules_structures[left_molecule_id]
+
+            for r, mrs in reactions.items():
+                tmp = []
+                for mr in mrs:
+                    mr_mid = mr.molecule.id
+                    mapping = mr.mapping
+                    mss = combo_structures if mr_mid in left_right_ids else molecules_structures[mr_mid]
+                    tmp.append([(ms.structure.remap(mapping, copy=True), ms) for ms in mss])
+                combos[r].extend(product(*tmp))
+            return dict(combos)
+
+        @staticmethod
+        def __create_mixed_reactions_indexes(combinations, reactions_reagents_len, exists_cgr_signatures):
+            for r, combos in combinations.items():
+                signatures, cgr_signatures, fingerprints = \
+                    r._prepare_reaction_sf(combos, reactions_reagents_len[r])
+                clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
+                for cc, s, cs, f in zip(combinations, signatures, cgr_signatures, fingerprints):
+                    if cs not in exists_cgr_signatures:
+                        clean_signatures.append(s)
+                        clean_cgr_signatures.append(cs)
+                        clean_fingerprints.append(f)
+                        clean_combinations.append(cc)
+                r._create_reaction_indexes(clean_combinations, clean_fingerprints, clean_cgr_signatures,
+                                           clean_signatures)
+
+        @staticmethod
+        def __create_reactions_indexes(combinations, reactions_reagents_len, exists_cgr_signatures):
+            exists_cgr_signatures_set = set(exists_cgr_signatures)
+            doubles = {}
+            for r, combos in combinations.items():
+                combos, signatures, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos,
+                                                                                          reactions_reagents_len[r])
+                d = exists_cgr_signatures_set.intersection(cgr_signatures)
+                if d:
+                    for x in d:
+                        left = exists_cgr_signatures[x]
+                        if left not in doubles:
+                            doubles[left] = r
+                    clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
+                    for cc, s, cs, f in zip(combinations, signatures, cgr_signatures, fingerprints):
+                        if cs not in d:
+                            clean_signatures.append(s)
+                            clean_cgr_signatures.append(cs)
+                            clean_fingerprints.append(f)
+                            clean_combinations.append(cc)
+                    if not clean_combinations:
+                        continue
+                    combos, cgr_signatures, signatures = clean_combinations, clean_cgr_signatures, clean_signatures
+                    fingerprints = clean_fingerprints
+                r._create_reaction_indexes(combos, fingerprints, cgr_signatures, signatures)
+            return doubles
 
     return MergeMolecules
 

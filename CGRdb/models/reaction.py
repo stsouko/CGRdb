@@ -68,7 +68,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
                                                            products_signatures=products_signatures)
 
             reagents_len = len(structure.reagents)
-            signatures, cgr_signatures, fingerprints, structures, cgrs = \
+            combos, signatures, cgr_signatures, fingerprints, structures, cgrs = \
                 self._prepare_reaction_sf(combos, reagents_len, cgrs, signatures, cgr_signatures, fingerprints, True)
 
             db.Entity.__init__(self, user_id=user.id)
@@ -128,19 +128,21 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
             if fingerprints is None or len(fingerprints) != combo_len:
                 fingerprints = cls.get_fingerprints(cgrs, bit_array=False)
 
-            clean_signatures, clean_cgr_signatures, clean_fingerprints = [], [], []
+            clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
             clean_cgrs, clean_structures = [], []
-            for s, cs, f, c, r in zip(signatures, cgr_signatures, fingerprints, cgrs, structures):
+            for cc, s, cs, f, c, r in zip(combinations, signatures, cgr_signatures, fingerprints, cgrs, structures):
                 if cs not in clean_cgr_signatures:
                     clean_signatures.append(s)
                     clean_cgr_signatures.append(cs)
                     clean_fingerprints.append(f)
                     clean_cgrs.append(c)
                     clean_structures.append(r)
+                    clean_combinations.append(cc)
 
             if get_structure_cgr:
-                return clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_structures, clean_cgrs
-            return clean_signatures, clean_cgr_signatures, clean_fingerprints
+                return clean_combinations, clean_signatures, clean_cgr_signatures, clean_fingerprints, \
+                       clean_structures, clean_cgrs
+            return clean_combinations, clean_signatures, clean_cgr_signatures, clean_fingerprints
 
         @classmethod
         def __prepare_molecules_batch(cls, structure, user, reagents_signatures=None, products_signatures=None):
