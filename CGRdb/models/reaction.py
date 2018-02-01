@@ -26,14 +26,14 @@ from itertools import count, product
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select
 from .user import mixin_factory as um
 from ..config import DEBUG
-# from ..management.reaction.remap import mixin_factory as rrm
+from ..management.reaction import mixin_factory as rmm
 from ..search.fingerprints import FingerprintsReaction, FingerprintsIndex
 from ..search.graph_matcher import mixin_factory as gmm
 from ..search.reaction import mixin_factory as rsm
 
 
 def load_tables(db, schema, user_entity, isotope=False, stereo=False):
-    class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo), rsm(db), um(user_entity)):
+    class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo), rsm(db), um(user_entity), rmm(db)):
         _table_ = '%s_reaction' % schema if DEBUG else (schema, 'reaction')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
