@@ -100,14 +100,16 @@ def mixin_factory(db):
                     i.reaction = r
                 for c in l.conditions:
                     c.reaction = r
-                # todo: classes
+                for cls in l.classes:
+                    r.classes.add(cls)
                 l.delete()
             for l, r in left_doubles.items():
                 for i in l.reaction_indexes:
                     i.reaction = r
                 for c in l.conditions:
                     c.reaction = r
-                # todo: classes
+                for cls in l.classes:
+                    r.classes.add(cls)
                 l.delete()
 
             for ms in left_structures:  # move structures
@@ -119,7 +121,8 @@ def mixin_factory(db):
             for mp in in_db.properties:  # move properties
                 mp.molecule = self
 
-            # todo: classes
+            for cls in in_db.classes:
+                self.classes.add(cls)
 
             in_db.delete()
             return {'structures': len(left_structures), 'reactions': len(left_reactions), 'mixed': len(mixed_reactions)}
@@ -145,10 +148,10 @@ def mixin_factory(db):
         @staticmethod
         def __create_mixed_reactions_indexes(combinations, reactions_reagents_len, exists_cgr_signatures):
             for r, combos in combinations.items():
-                signatures, cgr_signatures, fingerprints = \
-                    r._prepare_reaction_sf(combos, reactions_reagents_len[r])
+                combos, signatures, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos,
+                                                                                          reactions_reagents_len[r])
                 clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
-                for cc, s, cs, f in zip(combinations, signatures, cgr_signatures, fingerprints):
+                for cc, s, cs, f in zip(combos, signatures, cgr_signatures, fingerprints):
                     if cs not in exists_cgr_signatures:
                         clean_signatures.append(s)
                         clean_cgr_signatures.append(cs)
@@ -171,7 +174,7 @@ def mixin_factory(db):
                         if left not in doubles:
                             doubles[left] = r
                     clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
-                    for cc, s, cs, f in zip(combinations, signatures, cgr_signatures, fingerprints):
+                    for cc, s, cs, f in zip(combos, signatures, cgr_signatures, fingerprints):
                         if cs not in d:
                             clean_signatures.append(s)
                             clean_cgr_signatures.append(cs)
