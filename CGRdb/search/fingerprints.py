@@ -42,19 +42,19 @@ class Fingerprints:
         return cls.get_fingerprints([structures], bit_array)[0]
 
     @staticmethod
-    def __get_fingerprints(df, bit_array=True):
-        bits_map = {}
-        for fragment in df.columns:
-            b = BitArray(md5(fragment.encode()).digest())
-            bits_map[fragment] = [b[r * FP_SIZE: (r + 1) * FP_SIZE].uint for r in range(FP_ACTIVE_BITS)]
-
-        result = []
+    def __get_fingerprints(df, bit_array=True, fragment_count=4):
+        prefixes = []
         for _, s in df.iterrows():
+            prefixes.append(set(['{0}_{1}'.format(i, k) for k, v in s.items()
+                                 for i in range(1, v + 1) if v and i < fragment_count + 1]))
+        result = []
+        for fragments in prefixes:
             active_bits = set()
-            for k, v in s.items():
-                if v:
-                    active_bits.update(bits_map[k])
-
+            bits_map = {}
+            for fragment in fragments:
+                b = BitArray(md5(fragment.encode()).digest())
+                bits_map[fragment] = [b[r * FP_SIZE: (r + 1) * FP_SIZE].uint for r in range(FP_ACTIVE_BITS)]
+                active_bits.update(bits_map[fragment])
             if bit_array:
                 fp = BitArray(2 ** FP_SIZE)
                 fp.set(True, active_bits)

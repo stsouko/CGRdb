@@ -69,6 +69,82 @@ def mixin_factory(db):
             return cls.__get_molecules(structure, '%%', number)
 
         @classmethod
+        def find_reaction_by_reagent(cls, structure, number=10):
+            return cls.__find_reaction_by_molecule(structure, number, product=False)
+
+        @classmethod
+        def find_reaction_by_product(cls, structure, number=10):
+            return cls.__find_reaction_by_molecule(structure, number, product=True)
+
+        @classmethod
+        def find_reaction_by_similar_reagent(cls, structure, number=10):
+            return cls.__find_similar_in_reaction(structure, number, product=False)
+
+        @classmethod
+        def find_reaction_by_similar_product(cls, structure, number=10):
+            return cls.__find_similar_in_reaction(structure, number, product=True)
+
+        @classmethod
+        def find_reaction_by_substructure_reagent(cls, structure, number=10):
+            return cls.__find_substructures_in_reaction(structure, number, product=False)
+
+        @classmethod
+        def find_reaction_by_substructure_product(cls, structure, number=10):
+            return cls.__find_substructures_in_reaction(structure, number, product=True)
+
+        @classmethod
+        def __find_reaction_by_molecule(cls, structure, number, product=None):
+            """
+            reaction search for molecule
+            it is also possible to search reactions with molecule in proper role: reagent/product
+
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit number of returned reactions
+            :param product: boolean. if True, find reactions with current molecule in products
+            :return: list of Reaction entities
+            """
+            molecule = cls.find_structure(structure)
+            return cls.__find_reactions(molecule, number, product)
+
+        @classmethod
+        def __find_similar_in_reaction(cls, structure, number, product=None):
+            """
+            search for reactions with similar molecule structure
+            molecule may be a reagent/product or whatever
+
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit number of returned reactions
+            :return: list of Reaction entities
+            """
+            molecules = cls.find_similar(structure, number)
+            return cls.__find_reactions(molecules, number, product)
+
+        @classmethod
+        def __find_substructures_in_reaction(cls, structure, number, product=None):
+            """
+            search for reactions with supergraph of current molecule structure
+            molecule may be a reagent/product or whatever
+
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit number of returned reactions
+            :return: list of Reaction entities
+            """
+            molecules = cls.find_substructures(structure, number)
+            return cls.__find_reactions(molecules, number, product)
+
+        @classmethod
+        def __find_reactions(cls, molecules, number, product=None):
+            reactions = []
+            for m in molecules[0] if isinstance(molecules, tuple) else [molecules]:
+                for mr in db.MoleculeReaction.select(lambda mr: mr.molecule == m and mr.is_product == product) \
+                        if product is not None else db.MoleculeReaction.select(lambda mr: mr.molecule == m):
+                    if len(reactions) == number:
+                        break
+                    if mr.reaction not in reactions:
+                        reactions.append(mr.reaction)
+            return reactions
+
+        @classmethod
         def __get_molecules(cls, structure, operator, number, set_raw=False, overload=2):
             """
             find Molecule entities from MoleculeStructure entities.
