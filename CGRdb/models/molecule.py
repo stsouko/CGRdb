@@ -42,13 +42,21 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         classes = Set('MoleculeClass')
         special = Optional(Json)
 
-        def __init__(self, structure, user, fingerprint=None, signature=None):
+        def __init__(self, structure, user, properties=None, special=None, fingerprint=None, signature=None):
             if signature is None:
                 signature = self.get_signature(structure)
             if fingerprint is None:
                 fingerprint = self.get_fingerprint(structure, bit_array=False)
 
             db.Entity.__init__(self, user_id=user.id)
+
+            if properties:
+                for p in properties:
+                    db.MoleculeProperties(p, self, user)
+
+            if special:
+                self.special = special
+
             self.__last = MoleculeStructure(self, structure, user, fingerprint, signature)
 
         @classmethod

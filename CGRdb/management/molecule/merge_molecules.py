@@ -103,7 +103,6 @@ def mixin_factory(db):
                 for cls in l.classes:
                     r.classes.add(cls)
                 l.delete()
-
             for l, r in left_doubles.items():
                 for i in l.reaction_indexes:
                     i.reaction = r
@@ -149,8 +148,8 @@ def mixin_factory(db):
         @staticmethod
         def __create_mixed_reactions_indexes(combinations, reactions_reagents_len, exists_cgr_signatures):
             for r, combos in combinations.items():
-                combos, signatures, cgr_signatures, fingerprints = \
-                    r._prepare_reaction_sf(combos, reactions_reagents_len[r])
+                combos, signatures, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos,
+                                                                                          reactions_reagents_len[r])
                 clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
                 for cc, s, cs, f in zip(combos, signatures, cgr_signatures, fingerprints):
                     if cs not in exists_cgr_signatures:

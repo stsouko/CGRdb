@@ -60,8 +60,8 @@ def mixin_factory(db):
         @staticmethod
         def __create_reactions_indexes(combinations, reactions_reagents_len):
             for r, combos in combinations.items():
-                combos, signatures, cgr_signatures, fingerprints = \
-                    r._prepare_reaction_sf(combos, reactions_reagents_len[r])
+                combos, signatures, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos,
+                                                                                          reactions_reagents_len[r])
                 r._create_reaction_indexes(combos, fingerprints, cgr_signatures, signatures)
 
     return NewStructure

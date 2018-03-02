@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -33,7 +33,7 @@ setup(
     author_email='stsouko@live.ru',
     description='CGRdb',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=2.7,<2.8', 'CIMtools>=1.3,<1.4', 'bitstring', 'pony'],
+    install_requires=['CGRtools>=2.8,<2.9', 'CIMtools>=1.3,<1.4', 'bitstring', 'pony'],
     extras_require={'postgres':  ['psycopg2'],
                     'postgres_cffi':  ['cffi', 'psycopg2cffi'],
                     'autocomplete': ['argcomplete']},
@@ -50,7 +50,7 @@ setup(
                  'Operating System :: OS Independent',
                  'Programming Language :: Python',
                  'Programming Language :: Python :: 3',
-                 'Programming Language :: Python :: 3.4',
                  'Programming Language :: Python :: 3.5',
-                 ]
+                 ],
+    command_options={'easy_install': {'allow_hosts': ('setup.py', 'github.com, pypi.python.org')}}
 )
