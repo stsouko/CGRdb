@@ -38,11 +38,11 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         user_id = Required(int, column='user')
         _structures = Set('MoleculeStructure')
         reactions = Set('MoleculeReaction')
-        properties = Set('MoleculeProperties')
+        metadata = Set('MoleculeProperties')
         classes = Set('MoleculeClass')
         special = Optional(Json)
 
-        def __init__(self, structure, user, properties=None, special=None, fingerprint=None, signature=None):
+        def __init__(self, structure, user, metadata=None, special=None, fingerprint=None, signature=None):
             if signature is None:
                 signature = self.get_signature(structure)
             if fingerprint is None:
@@ -50,8 +50,8 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
 
             db.Entity.__init__(self, user_id=user.id)
 
-            if properties:
-                for p in properties:
+            if metadata:
+                for p in metadata:
                     db.MoleculeProperties(p, self, user)
 
             if special:
@@ -97,6 +97,9 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         @raw_edition.setter
         def raw_edition(self, structure):
             self.__raw = structure
+
+        def add_metadata(self, data, user):
+            return db.MoleculeProperties(data, self, user)
 
         __last = None
         __raw = None

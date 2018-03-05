@@ -40,19 +40,19 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         user_id = Required(int, column='user')
         molecules = Set('MoleculeReaction')
         reaction_indexes = Set('ReactionIndex')
-        conditions = Set('ReactionConditions')
+        metadata = Set('ReactionConditions')
         classes = Set('ReactionClass')
         special = Optional(Json)
 
         __cgr_core = CGRpreparer()
 
-        def __init__(self, structure, user, conditions=None, special=None, fingerprints=None, cgr_signatures=None,
+        def __init__(self, structure, user, metadata=None, special=None, fingerprints=None, cgr_signatures=None,
                      signatures=None, cgrs=None, reagents_signatures=None, products_signatures=None):
             """
             storing reaction in DB.
             :param structure: CGRtools ReactionContainer
             :param user: user entity
-            :param conditions: list of Json serializable Data (expected list of dicts)
+            :param metadata: list of Json serializable Data (expected list of dicts)
             :param special: Json serializable Data (expected dict)
             :param fingerprints: reaction fingerprints for all existing in db molecules structures combinations.
              for example: reaction A + B -> C. A has 2 structure in db, B - 3 and C - 1. number of combinations = 6.
@@ -86,8 +86,8 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
                 else:
                     break
 
-            if conditions:
-                for c in conditions:
+            if metadata:
+                for c in metadata:
                     db.ReactionConditions(c, self, user)
 
             if special:
@@ -282,8 +282,8 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         def structures_raw(self, structures):
             self.__cached_structures_raw = structures
 
-        def add_conditions(self, data, user):
-            db.ReactionConditions(data, self, user)
+        def add_metadata(self, data, user):
+            return db.ReactionConditions(data, self, user)
 
         __cached_structure = __cached_cgr = __cached_structures_raw = __cached_cgrs_raw = None
 

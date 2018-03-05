@@ -31,10 +31,10 @@ def load_tables(db, schema, user_entity):
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
         data = Required(Json)
-        molecule = Required('Molecule')
+        structure = Required('Molecule')
 
-        def __init__(self, data, molecule, user):
-            db.Entity.__init__(self, user_id=user.id, molecule=molecule, data=data)
+        def __init__(self, data, structure, user):
+            db.Entity.__init__(self, user_id=user.id, structure=structure, data=data)
 
     class ReactionConditions(db.Entity, um(user_entity)):
         _table_ = '%s_conditions' % schema if DEBUG else (schema, 'conditions')
@@ -42,26 +42,26 @@ def load_tables(db, schema, user_entity):
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
         data = Required(Json)
-        reaction = Required('Reaction')
+        structure = Required('Reaction')
 
-        def __init__(self, data, reaction, user):
-            db.Entity.__init__(self, user_id=user.id, reaction=reaction, data=data)
+        def __init__(self, data, structure, user):
+            db.Entity.__init__(self, user_id=user.id, structure=structure, data=data)
 
     class MoleculeClass(db.Entity):
         _table_ = '%s_molecule_class' % schema if DEBUG else (schema, 'molecule_class')
         id = PrimaryKey(int, auto=True)
         name = Required(str)
         _type = Required(int, default=0, column='type')
-        molecules = Set('Molecule', table='%s_molecule_molecule_class' % schema if DEBUG else
-                                          (schema, 'molecule_molecule_class'))
+        structures = Set('Molecule', table='%s_molecule_molecule_class' % schema if DEBUG else
+                                           (schema, 'molecule_molecule_class'))
 
     class ReactionClass(db.Entity):
         _table_ = '%s_reaction_class' % schema if DEBUG else (schema, 'reaction_class')
         id = PrimaryKey(int, auto=True)
         name = Required(str)
         _type = Required(int, default=0, column='type')
-        reactions = Set('Reaction', table='%s_reaction_reaction_class' % schema if DEBUG else
-                                          (schema, 'reaction_reaction_class'))
+        structures = Set('Reaction', table='%s_reaction_reaction_class' % schema if DEBUG else
+                                           (schema, 'reaction_reaction_class'))
 
 
 __all__ = [load_tables.__name__]
