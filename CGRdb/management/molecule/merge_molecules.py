@@ -98,16 +98,16 @@ def mixin_factory(db):
             for l, r in right_doubles.items():
                 for i in l.reaction_indexes:
                     i.reaction = r
-                for c in l.conditions:
-                    c.reaction = r
+                for c in l.metadata:
+                    c.structure = r
                 for cls in l.classes:
                     r.classes.add(cls)
                 l.delete()
             for l, r in left_doubles.items():
                 for i in l.reaction_indexes:
                     i.reaction = r
-                for c in l.conditions:
-                    c.reaction = r
+                for c in l.metadata:
+                    c.structure = r
                 for cls in l.classes:
                     r.classes.add(cls)
                 l.delete()
@@ -118,8 +118,8 @@ def mixin_factory(db):
             for mr in in_db.reactions:  # move reactions
                 mr.molecule = self
 
-            for mp in in_db.properties:  # move properties
-                mp.molecule = self
+            for mp in in_db.metadata:  # move properties
+                mp.structure = self
 
             for cls in in_db.classes:
                 self.classes.add(cls)

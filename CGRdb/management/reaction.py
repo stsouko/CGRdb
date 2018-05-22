@@ -23,7 +23,7 @@
 
 def mixin_factory(db):
     class UpdateMixin:
-        def update_structure(self, structure):
+        def update_structure(self, structure, user=None):
             """
             Update reaction structure by creating a new reaction, moving
             all necessary data and removing incorrect reaction from db.
@@ -32,10 +32,12 @@ def mixin_factory(db):
             Use when mapping or some molecules in reaction is wrong.
 
             :param structure: CGRtools ReactionContainer
+            :param user: user entity
             :return: updated reaction entity
             """
             assert not self.structure_exists(structure), 'structure already exists'
-            reaction = db.Reaction(structure, self.user)
+
+            reaction = db.Reaction(structure, self.user if user is None else user)
 
             return self.__move_reaction_data(reaction)
 
@@ -61,8 +63,8 @@ def mixin_factory(db):
             :param reaction: reaction entity
             :return: new reaction entity
             """
-            for c in self.conditions:
-                c.reaction = reaction
+            for c in self.metadata:
+                c.structure = reaction
             for cls in self.classes:
                 reaction.classes.add(cls)
             self.delete()

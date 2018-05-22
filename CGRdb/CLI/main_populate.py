@@ -103,17 +103,17 @@ def populate(res, database, user):
             if not reaction:
                 next(added_data)
                 if rnum in fuck_opt:  # if molecules has multiple forms don't use precomputed fields. мне влом.
-                    Reaction(r, user, conditions=meta.pop('rxd'), special=meta,
+                    Reaction(r, user, meta.pop('rxd'), special=meta,
                              reagents_signatures=rms['reagents'], products_signatures=rms['products'])
                 else:
-                    Reaction(r, user, conditions=meta.pop('rxd'), special=meta,
+                    Reaction(r, user, meta.pop('rxd'), special=meta,
                              fingerprints=[r_fp], cgr_signatures=[rs], cgrs=[cgr], signatures=[ml_fear],
                              reagents_signatures=rms['reagents'], products_signatures=rms['products'])
 
             else:
                 next(upd_data)
                 for c in meta['rxd'] or []:
-                    reaction.add_conditions(c, user)
+                    reaction.add_metadata(c, user)
                     # Tell child processes to stop
 
     return next(added_data), next(upd_data), raw_num, clean_num
