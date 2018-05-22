@@ -42,7 +42,7 @@ def mixin_factory(db):
                 return molecule
 
         @classmethod
-        def find_substructures(cls, structure, number=10):
+        def find_substructures(cls, structure, number=10, trials=3):
             """
             graph substructure search
             :param structure: CGRtools MoleculeContainer
@@ -51,11 +51,16 @@ def mixin_factory(db):
             :return: list of Molecule entities, list of Tanimoto indexes
             """
             mol, tan = [], []
-            for x, y in zip(*cls.__get_molecules(structure, '@>', number, set_raw=True, overload=3)):
-                if cls.is_substructure(x.structure_raw, structure):
-                    mol.append(x)
-                    tan.append(y)
-            return mol, tan
+            for page in range(1, trials+1):
+                for x, y in zip(*cls.__get_molecules(structure, '@>', number, page, set_raw=True, overload=2)):
+                    if cls.is_substructure(x.structure_raw, structure):
+                        mol.append(x)
+                        tan.append(y)
+                if len(mol) >= number:
+                    break
+            _map = sorted(zip(mol, tan), reverse=True, key=itemgetter(1))
+            mol, tan = [i for i, _ in _map], [i for _, i in _map]
+            return mol[:number], tan[:number]
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -135,17 +140,22 @@ def mixin_factory(db):
         @classmethod
         def __find_reactions(cls, molecules, number, product=None):
             reactions = []
-            for m in molecules[0] if isinstance(molecules, tuple) else [molecules]:
-                for mr in db.MoleculeReaction.select(lambda mr: mr.molecule == m and mr.is_product == product) \
-                        if product is not None else db.MoleculeReaction.select(lambda mr: mr.molecule == m):
+            tanimoto = []
+            for m, t in zip(*molecules) if isinstance(molecules, tuple) else [[molecules, None]]:
+                q = db.MoleculeReaction.select(lambda mr: mr.molecule == m)
+                if product is not None:
+                    q = q.filter(lambda mr: mr.is_product == product)
+                for mr in q:
                     if len(reactions) == number:
                         break
                     if mr.reaction not in reactions:
                         reactions.append(mr.reaction)
-            return reactions
+                        if t is not None:
+                            tanimoto.append(t)
+            return (reactions, tanimoto) if isinstance(molecules, tuple) else reactions
 
         @classmethod
-        def __get_molecules(cls, structure, operator, number, set_raw=False, overload=2):
+        def __get_molecules(cls, structure, operator, number, page=1, set_raw=False, overload=2):
             """
             find Molecule entities from MoleculeStructure entities.
             set to Molecule entities raw_structure property's found MoleculeStructure entities
@@ -159,7 +169,8 @@ def mixin_factory(db):
             sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             mis, sis, sts = [], [], []
             for mi, si, st in sorted(select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in db.MoleculeStructure
-                                     if raw_sql(sql_select)).limit(number * overload), key=itemgetter(2), reverse=True):
+                                     if x.molecule.id not in mis and raw_sql(sql_select)).page(page, number * overload),
+                                     key=itemgetter(2), reverse=True):
                 if len(mis) == number:
                     break  # limit of results len to given number
                 if mi not in mis:

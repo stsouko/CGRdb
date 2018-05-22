@@ -24,7 +24,7 @@ from CGRtools.containers import CGRContainer
 from CIMtools.descriptors.fragmentor import Fragmentor
 from ..config import (FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL,
                       FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH,
-                      FP_SIZE, FP_ACTIVE_BITS)
+                      FP_SIZE, FP_ACTIVE_BITS, FRAGMENTS_COUNT)
 
 
 class Fingerprints:
@@ -42,11 +42,11 @@ class Fingerprints:
         return cls.get_fingerprints([structures], bit_array)[0]
 
     @staticmethod
-    def __get_fingerprints(df, bit_array=True, fragment_count=4):
+    def __get_fingerprints(df, bit_array=True):
         prefixes = []
         for _, s in df.iterrows():
-            prefixes.append(set(['{0}_{1}'.format(i, k) for k, v in s.items()
-                                 for i in range(1, v + 1) if v and i < fragment_count + 1]))
+            prefixes.append(set(['{}_{}'.format(i, k) for k, v in s.items()
+                                 for i in range(1, int(v) + 1) if v and i < FRAGMENTS_COUNT + 1]))
         result = []
         for fragments in prefixes:
             active_bits = set()
