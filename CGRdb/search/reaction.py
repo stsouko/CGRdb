@@ -50,20 +50,23 @@ def mixin_factory(db):
                 return ri.reaction
 
         @classmethod
-        def find_substructures(cls, structure, number=10):
+        def find_substructures(cls, structure, number=10, pages=3):
             """
             cgr substructure search
             :param structure: CGRtools ReactionContainer
             :param number: top limit of returned results. not guarantee returning of all available data.
             set bigger value for this
+            :param pages: max number of attempts to get required number of reactions from db.
+            if required number is not reached, the next page of query result is taken.
             :return: list of Reaction entities, list of Tanimoto indexes
             """
             cgr = cls.get_cgr(structure)
             rxn, tan = [], []
-            for x, y in zip(*cls.__get_reactions(cgr, '@>', number, set_raw=True, overload=3)):
-                if any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
-                    rxn.append(x)
-                    tan.append(y)
+            for page in range(1, pages + 1):
+                for x, y in zip(*cls.__get_reactions(cgr, '@>', number, page, set_raw=True, overload=3)):
+                    if x not in rxn and any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
+                        rxn.append(x)
+                        tan.append(y)
             return rxn, tan
 
         @classmethod
@@ -78,7 +81,7 @@ def mixin_factory(db):
             return cls.__get_reactions(structure, '%%', number)
 
         @classmethod
-        def __get_reactions(cls, structure, operator, number, set_raw=False, overload=2):
+        def __get_reactions(cls, structure, operator, number, page=1, set_raw=False, overload=2):
             """
             extract Reaction entities from ReactionIndex entities.
             cache reaction structure in Reaction entities
@@ -90,8 +93,8 @@ def mixin_factory(db):
             sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
             sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             ris, its, iis = [], [], []
-            for ri, rt, ii in sorted(select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in db.ReactionIndex
-                                            if raw_sql(sql_select)).limit(number * overload),
+            q = select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in db.ReactionIndex if raw_sql(sql_select))
+            for ri, rt, ii in sorted(q.page(page, number * overload),
                                      key=itemgetter(2), reverse=True):
                 if len(ris) == number:
                     break

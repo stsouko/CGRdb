@@ -42,18 +42,20 @@ def mixin_factory(db):
                 return molecule
 
         @classmethod
-        def find_substructures(cls, structure, number=10, trials=3):
+        def find_substructures(cls, structure, number=10, pages=3):
             """
             graph substructure search
             :param structure: CGRtools MoleculeContainer
             :param number: top limit of returned results. not guarantee returning of all available data.
             set bigger value for this
+            :param pages: max number of attempts to get the required number of molecules from db.
+            if required number is not reached, the next page of query result is taken.
             :return: list of Molecule entities, list of Tanimoto indexes
             """
             mol, tan = [], []
-            for page in range(1, trials+1):
+            for page in range(1, pages + 1):
                 for x, y in zip(*cls.__get_molecules(structure, '@>', number, page, set_raw=True, overload=2)):
-                    if cls.is_substructure(x.structure_raw, structure):
+                    if x not in mol and cls.is_substructure(x.structure_raw, structure):
                         mol.append(x)
                         tan.append(y)
                 if len(mol) >= number:
@@ -168,9 +170,8 @@ def mixin_factory(db):
             sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
             sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             mis, sis, sts = [], [], []
-            for mi, si, st in sorted(select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in db.MoleculeStructure
-                                     if x.molecule.id not in mis and raw_sql(sql_select)).page(page, number * overload),
-                                     key=itemgetter(2), reverse=True):
+            q = select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in db.MoleculeStructure if raw_sql(sql_select))
+            for mi, si, st in sorted(q.page(page, number * overload), key=itemgetter(2), reverse=True):
                 if len(mis) == number:
                     break  # limit of results len to given number
                 if mi not in mis:
