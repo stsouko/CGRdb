@@ -42,20 +42,37 @@ def mixin_factory(db):
                 return molecule
 
         @classmethod
-        def find_substructures(cls, structure, number=10):
+        def find_substructures(cls, structure, number=10, *, pages=3):
             """
             graph substructure search
             :param structure: CGRtools MoleculeContainer
             :param number: top limit of returned results. not guarantee returning of all available data.
             set bigger value for this
+            :param pages: max number of attempts to get the required number of molecules from db.
+            if required number is not reached, the next page of query result is taken.
             :return: list of Molecule entities, list of Tanimoto indexes
             """
             mol, tan = [], []
-            for x, y in zip(*cls.__get_molecules(structure, '@>', number, set_raw=True, overload=3)):
+
+            for x, y in zip(*cls.__get_molecules(structure, '@>', number, 1, set_raw=True, overload=2)):
                 if cls.is_substructure(x.structure_raw, structure):
                     mol.append(x)
                     tan.append(y)
-            return mol, tan
+            if len(mol) == number:
+                return mol, tan
+
+            g = (x for p in range(2, pages + 1) for x in
+                 zip(*cls.__get_molecules(structure, '@>', number, p, set_raw=True, overload=2)))
+
+            for x, y in g:
+                if x not in mol and cls.is_substructure(x.structure_raw, structure):
+                    mol.append(x)
+                    tan.append(y)
+                if len(mol) == number:
+                    break
+            _map = sorted(zip(mol, tan), reverse=True, key=itemgetter(1))
+
+            return [i for i, _ in _map], [i for _, i in _map]
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -69,7 +86,88 @@ def mixin_factory(db):
             return cls.__get_molecules(structure, '%%', number)
 
         @classmethod
-        def __get_molecules(cls, structure, operator, number, set_raw=False, overload=2):
+        def find_reaction_by_reagent(cls, structure, number=10):
+            return cls.find_reaction_by_molecule(structure, number, product=False)
+
+        @classmethod
+        def find_reaction_by_product(cls, structure, number=10):
+            return cls.find_reaction_by_molecule(structure, number, product=True)
+
+        @classmethod
+        def find_reaction_by_similar_reagent(cls, structure, number=10):
+            return cls.find_reaction_by_similar_molecule(structure, number, product=False)
+
+        @classmethod
+        def find_reaction_by_similar_product(cls, structure, number=10):
+            return cls.find_reaction_by_similar_molecule(structure, number, product=True)
+
+        @classmethod
+        def find_reaction_by_substructure_reagent(cls, structure, number=10, pages=3):
+            return cls.find_reaction_by_substructure_molecule(structure, number, product=False, pages=pages)
+
+        @classmethod
+        def find_reaction_by_substructure_product(cls, structure, number=10, pages=3):
+            return cls.find_reaction_by_substructure_molecule(structure, number, product=True, pages=pages)
+
+        @classmethod
+        def find_reaction_by_molecule(cls, structure, number=10, *, product=None):
+            """
+            reaction search for molecule
+            it is also possible to search reactions with molecule in proper role: reagent/product
+
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit number of returned reactions
+            :param product: boolean. if True, find reactions with current molecule in products
+            :return: list of Reaction entities
+            """
+            molecule = cls.find_structure(structure)
+            return cls.__find_reactions(molecule, number, product)
+
+        @classmethod
+        def find_reaction_by_similar_molecule(cls, structure, number, *, product=None):
+            """
+            search for reactions with similar molecule structure
+            molecule may be a reagent/product or whatever
+
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit number of returned reactions
+            :return: list of Reaction entities
+            """
+            molecules = cls.find_similar(structure, number)
+            return cls.__find_reactions(molecules, number, product)
+
+        @classmethod
+        def find_reaction_by_substructure_molecule(cls, structure, number, *, product=None, pages=3):
+            """
+            search for reactions with supergraph of current molecule structure
+            molecule may be a reagent/product or whatever
+
+            :param structure: CGRtools MoleculeContainer
+            :param number: top limit number of returned reactions
+            :return: list of Reaction entities
+            """
+            molecules = cls.find_substructures(structure, number, pages=pages)
+            return cls.__find_reactions(molecules, number, product)
+
+        @classmethod
+        def __find_reactions(cls, molecules, number, product=None):
+            reactions = []
+            tanimoto = []
+            for m, t in zip(*molecules) if isinstance(molecules, tuple) else [[molecules, None]]:
+                q = db.MoleculeReaction.select(lambda mr: mr.molecule == m)
+                if product is not None:
+                    q = q.filter(lambda mr: mr.is_product == product)
+                for mr in q:
+                    if len(reactions) == number:
+                        break
+                    if mr.reaction not in reactions:
+                        reactions.append(mr.reaction)
+                        if t is not None:
+                            tanimoto.append(t)
+            return (reactions, tanimoto) if isinstance(molecules, tuple) else reactions
+
+        @classmethod
+        def __get_molecules(cls, structure, operator, number, page=1, set_raw=False, overload=2):
             """
             find Molecule entities from MoleculeStructure entities.
             set to Molecule entities raw_structure property's found MoleculeStructure entities
@@ -82,8 +180,8 @@ def mixin_factory(db):
             sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
             sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             mis, sis, sts = [], [], []
-            for mi, si, st in sorted(select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in db.MoleculeStructure
-                                     if raw_sql(sql_select)).limit(number * overload), key=itemgetter(2), reverse=True):
+            q = select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in db.MoleculeStructure if raw_sql(sql_select))
+            for mi, si, st in sorted(q.page(page, number * overload), key=itemgetter(2), reverse=True):
                 if len(mis) == number:
                     break  # limit of results len to given number
                 if mi not in mis:

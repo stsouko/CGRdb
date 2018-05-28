@@ -24,7 +24,7 @@ from CGRtools.containers import CGRContainer
 from CIMtools.descriptors.fragmentor import Fragmentor
 from ..config import (FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL,
                       FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH,
-                      FP_SIZE, FP_ACTIVE_BITS)
+                      FP_SIZE, FP_ACTIVE_BITS, FRAGMENTS_COUNT)
 
 
 class Fingerprints:
@@ -43,18 +43,18 @@ class Fingerprints:
 
     @staticmethod
     def __get_fingerprints(df, bit_array=True):
-        bits_map = {}
-        for fragment in df.columns:
-            b = BitArray(md5(fragment.encode()).digest())
-            bits_map[fragment] = [b[r * FP_SIZE: (r + 1) * FP_SIZE].uint for r in range(FP_ACTIVE_BITS)]
-
-        result = []
+        prefixes = []
         for _, s in df.iterrows():
+            prefixes.append(set(['{}_{}'.format(i, k) for k, v in s.items()
+                                 for i in range(1, int(v) + 1) if v and i < FRAGMENTS_COUNT + 1]))
+        result = []
+        for fragments in prefixes:
             active_bits = set()
-            for k, v in s.items():
-                if v:
-                    active_bits.update(bits_map[k])
-
+            bits_map = {}
+            for fragment in fragments:
+                b = BitArray(md5(fragment.encode()).digest())
+                bits_map[fragment] = [b[r * FP_SIZE: (r + 1) * FP_SIZE].uint for r in range(FP_ACTIVE_BITS)]
+                active_bits.update(bits_map[fragment])
             if bit_array:
                 fp = BitArray(2 ** FP_SIZE)
                 fp.set(True, active_bits)
