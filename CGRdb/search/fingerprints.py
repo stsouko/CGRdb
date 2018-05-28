@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 #  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -21,7 +22,7 @@
 from hashlib import md5
 from bitstring import BitArray
 from CGRtools.containers import CGRContainer
-from CIMtools.descriptors.fragmentor import Fragmentor
+from CIMtools.preprocessing import Fragmentor
 from ..config import (FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL,
                       FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH,
                       FP_SIZE, FP_ACTIVE_BITS, FRAGMENTS_COUNT)
@@ -70,7 +71,7 @@ class Fingerprints:
 class FingerprintsMolecule(Fingerprints):
     @classmethod
     def _get_descriptors(cls, structures):
-        return cls.__fragmentor.get(structures).X
+        return cls.__fragmentor.fit_transform(structures)
 
     __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_MOL,
                               workpath=WORKPATH, min_length=FRAGMENT_MIN_MOL, max_length=FRAGMENT_MAX_MOL,
@@ -81,7 +82,7 @@ class FingerprintsReaction(Fingerprints):
     @classmethod
     def _get_descriptors(cls, structures):
         cgrs = [x if isinstance(x, CGRContainer) else cls.get_cgr(x) for x in structures]
-        return cls.__fragmentor.get(cgrs).X
+        return cls.__fragmentor.fit_transform(cgrs)
 
     __fragmentor = Fragmentor(version=FRAGMENTOR_VERSION, header=False, fragment_type=FRAGMENT_TYPE_CGR,
                               min_length=FRAGMENT_MIN_CGR, max_length=FRAGMENT_MAX_CGR, workpath=WORKPATH,

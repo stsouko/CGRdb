@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2015-2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2015-2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -31,6 +31,7 @@ DB_PASS = None
 DB_HOST = None
 DB_NAME = None
 DB_DATA = None
+DB_PORT = 5432
 
 FP_SIZE = 12
 FP_ACTIVE_BITS = 2
@@ -48,7 +49,7 @@ DATA_STEREO = False
 WORKPATH = '.'
 
 
-config_list = ('DB_USER', 'DB_PASS', 'DB_HOST', 'DB_NAME', 'DB_MAIN', 'DB_PRED', 'DB_DATA',
+config_list = ('DB_USER', 'DB_PASS', 'DB_HOST', 'DB_NAME', 'DB_MAIN', 'DB_PRED', 'DB_DATA', 'DB_PORT',
                'FP_SIZE', 'FP_ACTIVE_BITS', 'FRAGMENTOR_VERSION', 'DATA_ISOTOPE', 'DATA_STEREO',
                'FRAGMENT_TYPE_CGR', 'FRAGMENT_MIN_CGR', 'FRAGMENT_MAX_CGR', 'FRAGMENT_DYNBOND_CGR',
                'FRAGMENT_TYPE_MOL', 'FRAGMENT_MIN_MOL', 'FRAGMENT_MAX_MOL', 'FRAGMENTS_COUNT', 'WORKPATH')

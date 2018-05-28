@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 #  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -124,7 +125,7 @@ def mixin_factory(db):
             return cls.__find_reactions(molecule, number, product)
 
         @classmethod
-        def find_reaction_by_similar_molecule(cls, structure, number, *, product=None):
+        def find_reaction_by_similar_molecule(cls, structure, number=10, *, product=None):
             """
             search for reactions with similar molecule structure
             molecule may be a reagent/product or whatever
@@ -137,7 +138,7 @@ def mixin_factory(db):
             return cls.__find_reactions(molecules, number, product)
 
         @classmethod
-        def find_reaction_by_substructure_molecule(cls, structure, number, *, product=None, pages=3):
+        def find_reaction_by_substructure_molecule(cls, structure, number=10, *, product=None, pages=3):
             """
             search for reactions with supergraph of current molecule structure
             molecule may be a reagent/product or whatever

@@ -33,12 +33,10 @@ setup(
     author_email='stsouko@live.ru',
     description='CGRdb',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=2.8,<2.9', 'CIMtools>=1.3,<1.4', 'bitstring', 'pony'],
+    install_requires=['CGRtools>=2.8.13,<2.9', 'CIMtools>=1.4,<1.5', 'bitstring', 'pony'],
     extras_require={'postgres':  ['psycopg2'],
                     'postgres_cffi':  ['cffi', 'psycopg2cffi'],
                     'autocomplete': ['argcomplete']},
-    dependency_links=['git+https://github.com/stsouko/CGRtools.git@2.7#egg=CGRtools-2.7',
-                      'git+https://github.com/stsouko/CIMtools.git@1.3#egg=CIMtools-1.3'],
     long_description=(Path(__file__).parent / 'README.md').open().read(),
     keywords='CGRdb database search similarity chemistry',
     classifiers=['Environment :: Web Environment',
@@ -52,5 +50,10 @@ setup(
                  'Programming Language :: Python :: 3',
                  'Programming Language :: Python :: 3.5',
                  ],
-    command_options={'easy_install': {'allow_hosts': ('setup.py', 'github.com, pypi.python.org')}}
+    command_options={'build_sphinx': {'project': ('setup.py', 'CGRdb'),
+                                      'version': ('setup.py', version()), 'source_dir': ('setup.py', 'doc'),
+                                      'build_dir':  ('setup.py', 'build/doc'),
+                                      'all_files': ('setup.py', True),
+                                      'copyright': ('setup.py', 'Dr. Ramil Nugmanov <stsouko@live.ru>')},
+                     'easy_install': {'allow_hosts': ('setup.py', 'github.com, pypi.python.org')}}
 )

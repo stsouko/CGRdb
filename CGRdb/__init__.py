@@ -19,7 +19,7 @@
 #  MA 02110-1301, USA.
 #
 from pony.orm import Database, sql_debug
-from .config import DB_DATA_LIST, DEBUG, DB_PASS, DB_HOST, DB_USER, DB_NAME
+from .config import DB_DATA_LIST, DEBUG, DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT
 from .models import load_tables
 
 
@@ -40,7 +40,7 @@ class Loader:
                 if DEBUG:
                     x.bind('sqlite', 'database.sqlite')
                 else:
-                    x.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME)
+                    x.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME, port=DB_PORT)
 
                 x.generate_mapping(create_tables=False)
 
