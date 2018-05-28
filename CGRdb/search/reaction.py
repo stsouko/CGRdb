@@ -50,7 +50,7 @@ def mixin_factory(db):
                 return ri.reaction
 
         @classmethod
-        def find_substructures(cls, structure, number=10, pages=3):
+        def find_substructures(cls, structure, number=10, *, pages=3):
             """
             cgr substructure search
             :param structure: CGRtools ReactionContainer
@@ -62,12 +62,26 @@ def mixin_factory(db):
             """
             cgr = cls.get_cgr(structure)
             rxn, tan = [], []
-            for page in range(1, pages + 1):
-                for x, y in zip(*cls.__get_reactions(cgr, '@>', number, page, set_raw=True, overload=3)):
-                    if x not in rxn and any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
-                        rxn.append(x)
-                        tan.append(y)
-            return rxn, tan
+
+            for x, y in zip(*cls.__get_reactions(cgr, '@>', number, 1, set_raw=True, overload=3)):
+                if any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
+                    rxn.append(x)
+                    tan.append(y)
+            if len(rxn) == number:
+                return rxn, tan
+
+            g = (x for p in range(2, pages + 1) for x in
+                 zip(*cls.__get_reactions(cgr, '@>', number, p, set_raw=True, overload=3)))
+
+            for x, y in g:
+                if x not in rxn and any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
+                    rxn.append(x)
+                    tan.append(y)
+                if len(rxn) == number:
+                    break
+            _map = sorted(zip(rxn, tan), reverse=True, key=itemgetter(1))
+
+            return [i for i, _ in _map], [i for _, i in _map]
 
         @classmethod
         def find_similar(cls, structure, number=10):

@@ -42,7 +42,7 @@ def mixin_factory(db):
                 return molecule
 
         @classmethod
-        def find_substructures(cls, structure, number=10, pages=3):
+        def find_substructures(cls, structure, number=10, *, pages=3):
             """
             graph substructure search
             :param structure: CGRtools MoleculeContainer
@@ -53,16 +53,26 @@ def mixin_factory(db):
             :return: list of Molecule entities, list of Tanimoto indexes
             """
             mol, tan = [], []
-            for page in range(1, pages + 1):
-                for x, y in zip(*cls.__get_molecules(structure, '@>', number, page, set_raw=True, overload=2)):
-                    if x not in mol and cls.is_substructure(x.structure_raw, structure):
-                        mol.append(x)
-                        tan.append(y)
-                if len(mol) >= number:
+
+            for x, y in zip(*cls.__get_molecules(structure, '@>', number, 1, set_raw=True, overload=2)):
+                if cls.is_substructure(x.structure_raw, structure):
+                    mol.append(x)
+                    tan.append(y)
+            if len(mol) == number:
+                return mol, tan
+
+            g = (x for p in range(2, pages + 1) for x in
+                 zip(*cls.__get_molecules(structure, '@>', number, p, set_raw=True, overload=2)))
+
+            for x, y in g:
+                if x not in mol and cls.is_substructure(x.structure_raw, structure):
+                    mol.append(x)
+                    tan.append(y)
+                if len(mol) == number:
                     break
             _map = sorted(zip(mol, tan), reverse=True, key=itemgetter(1))
-            mol, tan = [i for i, _ in _map], [i for _, i in _map]
-            return mol[:number], tan[:number]
+
+            return [i for i, _ in _map], [i for _, i in _map]
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -77,30 +87,30 @@ def mixin_factory(db):
 
         @classmethod
         def find_reaction_by_reagent(cls, structure, number=10):
-            return cls.__find_reaction_by_molecule(structure, number, product=False)
+            return cls.find_reaction_by_molecule(structure, number, product=False)
 
         @classmethod
         def find_reaction_by_product(cls, structure, number=10):
-            return cls.__find_reaction_by_molecule(structure, number, product=True)
+            return cls.find_reaction_by_molecule(structure, number, product=True)
 
         @classmethod
         def find_reaction_by_similar_reagent(cls, structure, number=10):
-            return cls.__find_similar_in_reaction(structure, number, product=False)
+            return cls.find_reaction_by_similar_molecule(structure, number, product=False)
 
         @classmethod
         def find_reaction_by_similar_product(cls, structure, number=10):
-            return cls.__find_similar_in_reaction(structure, number, product=True)
+            return cls.find_reaction_by_similar_molecule(structure, number, product=True)
 
         @classmethod
-        def find_reaction_by_substructure_reagent(cls, structure, number=10):
-            return cls.__find_substructures_in_reaction(structure, number, product=False)
+        def find_reaction_by_substructure_reagent(cls, structure, number=10, pages=3):
+            return cls.find_reaction_by_substructure_molecule(structure, number, product=False, pages=pages)
 
         @classmethod
-        def find_reaction_by_substructure_product(cls, structure, number=10):
-            return cls.__find_substructures_in_reaction(structure, number, product=True)
+        def find_reaction_by_substructure_product(cls, structure, number=10, pages=3):
+            return cls.find_reaction_by_substructure_molecule(structure, number, product=True, pages=pages)
 
         @classmethod
-        def __find_reaction_by_molecule(cls, structure, number, product=None):
+        def find_reaction_by_molecule(cls, structure, number=10, *, product=None):
             """
             reaction search for molecule
             it is also possible to search reactions with molecule in proper role: reagent/product
@@ -114,7 +124,7 @@ def mixin_factory(db):
             return cls.__find_reactions(molecule, number, product)
 
         @classmethod
-        def __find_similar_in_reaction(cls, structure, number, product=None):
+        def find_reaction_by_similar_molecule(cls, structure, number, *, product=None):
             """
             search for reactions with similar molecule structure
             molecule may be a reagent/product or whatever
@@ -127,7 +137,7 @@ def mixin_factory(db):
             return cls.__find_reactions(molecules, number, product)
 
         @classmethod
-        def __find_substructures_in_reaction(cls, structure, number, product=None):
+        def find_reaction_by_substructure_molecule(cls, structure, number, *, product=None, pages=3):
             """
             search for reactions with supergraph of current molecule structure
             molecule may be a reagent/product or whatever
@@ -136,7 +146,7 @@ def mixin_factory(db):
             :param number: top limit number of returned reactions
             :return: list of Reaction entities
             """
-            molecules = cls.find_substructures(structure, number)
+            molecules = cls.find_substructures(structure, number, pages=pages)
             return cls.__find_reactions(molecules, number, product)
 
         @classmethod
