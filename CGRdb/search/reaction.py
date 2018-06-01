@@ -105,8 +105,8 @@ def mixin_factory(db):
             :return: Reaction entities
             """
             bit_set = cls.get_fingerprint(structure, bit_array=False)
-            sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
-            sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
+            sql_select = "x.bit_array::int[] %s '%s'::int[]" % (operator, bit_set)
+            sql_smlar = "smlar(x.bit_array::int[], '%s'::int[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             ris, its, iis = [], [], []
             q = select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in db.ReactionIndex if raw_sql(sql_select))
             for ri, rt, ii in sorted(q.page(page, number * overload),

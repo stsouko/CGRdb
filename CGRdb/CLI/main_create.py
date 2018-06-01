@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.4
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb 
@@ -43,43 +43,37 @@ def create_core(**kwargs):
 
         with db_session:
             ext_smlar = 'CREATE EXTENSION IF NOT EXISTS smlar'
+            ext_intarr = 'CREATE EXTENSION IF NOT EXISTS intarray'
 
-            json_int2 = 'CREATE OR REPLACE FUNCTION {0}.json_int2(_js jsonb)\n' \
-                        'RETURNS INT2[] AS\n' \
-                        '$$$$\n' \
-                        'SELECT ARRAY(SELECT jsonb_array_elements_text(_js)::INT2)\n' \
-                        '$$$$\n' \
-                        'LANGUAGE sql IMMUTABLE'.format(schema)
-
-            trigger_json_int2 = 'CREATE OR REPLACE FUNCTION {0}.trigger_json_int2()\n' \
-                                'RETURNS trigger AS\n' \
-                                '$$$$\n' \
-                                'BEGIN\n' \
-                                '    NEW.bit_array = {0}.json_int2(NEW.bit_list);\n' \
-                                '    RETURN NEW;\n' \
-                                'END\n' \
-                                '$$$$\n' \
-                                'LANGUAGE plpgsql'.format(schema)
+            json2int_arr = 'CREATE OR REPLACE FUNCTION {0}.json2int_arr_tr()\n' \
+                           'RETURNS trigger AS\n' \
+                           '$BODY$\n' \
+                           'BEGIN\n' \
+                           '    NEW.bit_array = ARRAY(SELECT jsonb_array_elements_text(NEW.bit_list));\n' \
+                           '    RETURN NEW;\n' \
+                           'END\n' \
+                           '$BODY$\n' \
+                           'LANGUAGE plpgsql'.format(schema)
 
             x.execute(ext_smlar)
-            x.execute(json_int2)
-            x.execute(trigger_json_int2)
+            x.execute(ext_intarr)
+            x.execute(json2int_arr)
 
         with db_session:
-            array_ri = 'ALTER TABLE {0}.reaction_index ADD bit_array INT2[] NOT NULL'.format(schema)
-            array_ms = 'ALTER TABLE {0}.molecule_structure ADD bit_array INT2[] NOT NULL'.format(schema)
+            array_ri = 'ALTER TABLE {0}.reaction_index ADD bit_array INT[] NOT NULL'.format(schema)
+            array_ms = 'ALTER TABLE {0}.molecule_structure ADD bit_array INT[] NOT NULL'.format(schema)
 
             trigger_ms = 'CREATE TRIGGER list_to_array\n' \
                          'BEFORE INSERT OR UPDATE\n' \
                          'ON {0}.molecule_structure\n' \
                          'FOR EACH ROW\n' \
-                         'EXECUTE PROCEDURE {0}.trigger_json_int2()'.format(schema)
+                         'EXECUTE PROCEDURE {0}.json2int_arr_tr()'.format(schema)
 
             trigger_ri = 'CREATE TRIGGER list_to_array\n' \
                          'BEFORE INSERT OR UPDATE\n' \
                          'ON {0}.reaction_index\n' \
                          'FOR EACH ROW\n' \
-                         'EXECUTE PROCEDURE {0}.trigger_json_int2()'.format(schema)
+                         'EXECUTE PROCEDURE {0}.json2int_arr_tr()'.format(schema)
 
             x.execute(array_ri)
             x.execute(array_ms)
@@ -88,16 +82,16 @@ def create_core(**kwargs):
 
         with db_session:
             smlar_ms = 'CREATE INDEX idx_smlar_molecule_structure ON {0}.molecule_structure USING ' \
-                       'GIST (bit_array _int2_sml_ops)'.format(schema)
+                       'GIST (bit_array _int4_sml_ops)'.format(schema)
 
             smlar_ri = 'CREATE INDEX idx_smlar_reaction_index ON {0}.reaction_index USING ' \
-                       'GIST (bit_array _int2_sml_ops)'.format(schema)
+                       'GIST (bit_array _int4_sml_ops)'.format(schema)
 
             subst_ms = 'CREATE INDEX idx_subst_molecule_structure ON {0}.molecule_structure USING ' \
-                       'GIN (bit_array _int2_ops)'.format(schema)
+                       'GIN (bit_array gin__int_ops)'.format(schema)
 
             subst_ri = 'CREATE INDEX idx_subst_reaction_index ON {0}.reaction_index USING ' \
-                       'GIN (bit_array _int2_ops)'.format(schema)
+                       'GIN (bit_array gin__int_ops)'.format(schema)
 
             x.execute(smlar_ms)
             x.execute(smlar_ri)

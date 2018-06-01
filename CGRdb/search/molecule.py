@@ -178,8 +178,8 @@ def mixin_factory(db):
             :return: Molecule entities
             """
             bit_set = cls.get_fingerprint(structure, bit_array=False)
-            sql_select = "x.bit_array %s '%s'::int2[]" % (operator, bit_set)
-            sql_smlar = "smlar(x.bit_array, '%s'::int2[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
+            sql_select = "x.bit_array::int[] %s '%s'::int[]" % (operator, bit_set)
+            sql_smlar = "smlar(x.bit_array::int[], '%s'::int[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
             mis, sis, sts = [], [], []
             q = select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in db.MoleculeStructure if raw_sql(sql_select))
             for mi, si, st in sorted(q.page(page, number * overload), key=itemgetter(2), reverse=True):
