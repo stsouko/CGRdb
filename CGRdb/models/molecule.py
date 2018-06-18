@@ -22,17 +22,22 @@ from datetime import datetime
 from CGRtools.containers import MoleculeContainer
 from pony.orm import PrimaryKey, Required, Optional, Set, Json
 from .user import mixin_factory as um
-from ..config import DEBUG
 from ..management.molecule.merge_molecules import mixin_factory as mmm
 from ..management.molecule.new_structure import mixin_factory as nsm
-from ..search.fingerprints import FingerprintsMolecule, FingerprintsIndex
+from ..search.fingerprints import molecule_mixin_factory as mfp
 from ..search.graph_matcher import mixin_factory as gmm
 from ..search.molecule import mixin_factory as msm
 
 
-def load_tables(db, schema, user_entity, isotope=False, stereo=False):
-    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo), msm(db), um(user_entity), mmm(db), nsm(db)):
-        _table_ = '%s_molecule' % schema if DEBUG else (schema, 'molecule')
+def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, fragment_min, fragment_max, fp_size,
+                fp_active_bits, fp_count, workpath='.', isotope=False, stereo=False, extralabels=False, debug=False):
+
+    FingerprintsMolecule, FingerprintsIndex = mfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
+                                                  fp_size, fp_active_bits, fp_count, workpath)
+
+    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo, extralabels), msm(db), um(user_entity),
+                   mmm(db), nsm(db)):
+        _table_ = '%s_molecule' % schema if debug else (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
@@ -61,7 +66,8 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
 
         @classmethod
         def get_signature(cls, structure):
-            return structure.get_signature_hash(isotope=isotope, stereo=stereo)
+            return structure.get_signature_hash(isotope=isotope, stereo=stereo, hybridization=extralabels,
+                                                neighbors=extralabels)
 
         @property
         def structure_raw(self):
@@ -105,7 +111,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         __raw = None
 
     class MoleculeStructure(db.Entity, FingerprintsIndex, um(user_entity)):
-        _table_ = '%s_molecule_structure' % schema if DEBUG else (schema, 'molecule_structure')
+        _table_ = '%s_molecule_structure' % schema if debug else (schema, 'molecule_structure')
         id = PrimaryKey(int, auto=True)
         user_id = Required(int, column='user')
         molecule = Required('Molecule')

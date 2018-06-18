@@ -25,7 +25,6 @@ from pony.orm import select, raw_sql
 
 def mixin_factory(db):
     class Search:
-
         @classmethod
         def structure_exists(cls, structure):
             return db.MoleculeStructure.exists(signature=structure if isinstance(structure, bytes) else

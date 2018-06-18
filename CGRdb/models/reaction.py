@@ -25,16 +25,22 @@ from datetime import datetime
 from itertools import count, product
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select
 from .user import mixin_factory as um
-from ..config import DEBUG
 from ..management.reaction import mixin_factory as rmm
-from ..search.fingerprints import FingerprintsReaction, FingerprintsIndex
+from ..search.fingerprints import reaction_mixin_factory as rfp
 from ..search.graph_matcher import mixin_factory as gmm
 from ..search.reaction import mixin_factory as rsm
 
 
-def load_tables(db, schema, user_entity, isotope=False, stereo=False):
-    class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo), rsm(db), um(user_entity), rmm(db)):
-        _table_ = '%s_reaction' % schema if DEBUG else (schema, 'reaction')
+def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, fragment_min, fragment_max,
+                fragment_dynbond, fp_size, fp_active_bits, fp_count, workpath='.',
+                isotope=False, stereo=False, extralabels=False, debug=False):
+
+    FingerprintsReaction, FingerprintsIndex = rfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
+                                                  fragment_dynbond, fp_size, fp_active_bits, fp_count, workpath)
+
+    class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo, extralabels), rsm(db), um(user_entity),
+                   rmm(db)):
+        _table_ = '%s_reaction' % schema if debug else (schema, 'reaction')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
@@ -232,13 +238,15 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         @classmethod
         def get_cgr_signature(cls, structure, get_cgr=False):
             cgr = cls.get_cgr(structure)
-            signature = cgr.get_signature_hash(isotope=isotope, stereo=stereo)
+            signature = cgr.get_signature_hash(isotope=isotope, stereo=stereo, hybridization=extralabels,
+                                               neighbors=extralabels)
             return (signature, cgr) if get_cgr else signature
 
         @classmethod
         def get_signature(cls, structure, get_merged=False):
             merged = structure if isinstance(structure, MergedReaction) else cls.merge_mols(structure)
-            signature = merged.get_signature_hash(isotope=isotope, stereo=stereo)
+            signature = merged.get_signature_hash(isotope=isotope, stereo=stereo, hybridization=extralabels,
+                                                  neighbors=extralabels)
             return (signature, merged) if get_merged else signature
 
         @property
@@ -290,7 +298,7 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
     class MoleculeReaction(db.Entity):
         """ molecule to reaction mapping data and role (reagent, reactant, product)
         """
-        _table_ = '%s_molecule_reaction' % schema if DEBUG else (schema, 'molecule_reaction')
+        _table_ = '%s_molecule_reaction' % schema if debug else (schema, 'molecule_reaction')
         id = PrimaryKey(int, auto=True)
         reaction = Required('Reaction')
         molecule = Required('Molecule')
@@ -319,10 +327,10 @@ def load_tables(db, schema, user_entity, isotope=False, stereo=False):
         __cached_mapping = None
 
     class ReactionIndex(db.Entity, FingerprintsIndex):
-        _table_ = '%s_reaction_index' % schema if DEBUG else (schema, 'reaction_index')
+        _table_ = '%s_reaction_index' % schema if debug else (schema, 'reaction_index')
         id = PrimaryKey(int, auto=True)
         reaction = Required('Reaction')
-        structures = Set('MoleculeStructure', table='%s_reaction_index_structure' % schema if DEBUG else
+        structures = Set('MoleculeStructure', table='%s_reaction_index_structure' % schema if debug else
                          (schema, 'reaction_index_structure'))
 
         cgr_signature = Required(bytes, unique=True)

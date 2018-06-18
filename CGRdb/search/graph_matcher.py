@@ -21,9 +21,9 @@
 from CGRtools.reactor import CGRreactor
 
 
-def mixin_factory(isotope=False, stereo=False):
+def mixin_factory(isotope=False, stereo=False, extralabels=False):
     class GraphMatcher:
-        __cgr_reactor = CGRreactor(isotope=isotope, stereo=stereo)
+        __cgr_reactor = CGRreactor(isotope=isotope, stereo=stereo, extralabels=extralabels)
 
         @classmethod
         def get_matcher(cls, g, h):

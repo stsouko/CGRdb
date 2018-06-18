@@ -40,8 +40,8 @@ def mixin_factory(db):
 
         @classmethod
         def find_unmapped_structures(cls, structure):
-            fear = structure if isinstance(structure, bytes) else cls.get_signature(structure)
-            return list(select(x.reaction for x in db.ReactionIndex if x.mapless_fear == fear))
+            signature = structure if isinstance(structure, bytes) else cls.get_signature(structure)
+            return list(select(x.reaction for x in db.ReactionIndex if x.signature == signature))
 
         @classmethod
         def find_structure(cls, structure):

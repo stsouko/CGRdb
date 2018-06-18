@@ -20,7 +20,7 @@
 #  MA 02110-1301, USA.
 #
 from CGRtools.files import SDFread, RDFread
-from ..models import UserADHOC
+from ..models.user import UserADHOC
 
 
 user = UserADHOC(0)

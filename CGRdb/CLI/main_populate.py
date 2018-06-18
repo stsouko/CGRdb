@@ -26,7 +26,7 @@ from pony.orm import db_session
 from sys import stderr
 from time import sleep
 from .. import Loader
-from ..models import UserADHOC
+from ..models.user import UserADHOC
 from ..utils.reaxys_data import Parser as ReaxysParser
 
 
