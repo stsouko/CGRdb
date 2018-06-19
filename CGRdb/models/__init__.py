@@ -20,24 +20,29 @@
 #
 
 
-def load_tables(db, schema, fragmentor_version, fragment_type_mol=3, fragment_min_mol=2, fragment_max_mol=6,
+def load_tables(schema, fragmentor_version, fragment_type_mol=3, fragment_min_mol=2, fragment_max_mol=6,
                 fragment_type_cgr=3, fragment_min_cgr=2, fragment_max_cgr=6, fragment_dynbond_cgr=1, fp_size=12,
                 fp_active_bits=2, fp_count=4, workpath='.', user_entity=None, isotope=False, stereo=False,
-                extralabels=False, debug=False):
+                extralabels=False, debug=False, get_db=False):
 
     if not user_entity:  # User Entity ADHOC.
         from .user import UserADHOC
         user_entity = UserADHOC
 
+    from pony.orm import Database
     from .molecule import load_tables as molecule_load
     from .reaction import load_tables as reaction_load
     from .data import load_tables as data_load
 
-    molecule_load(db, schema, user_entity, fragmentor_version, fragment_type_mol, fragment_min_mol, fragment_max_mol,
-                  fp_size, fp_active_bits, fp_count, workpath, isotope, stereo, extralabels, debug)
-    reaction_load(db, schema, user_entity, fragmentor_version, fragment_type_cgr, fragment_min_cgr, fragment_max_cgr,
-                  fragment_dynbond_cgr, fp_size, fp_active_bits, fp_count, workpath, isotope, stereo, extralabels,
-                  debug)
-    data_load(db, schema, user_entity, debug=debug)
+    db = Database()
 
-    return db.Molecule, db.Reaction
+    m = molecule_load(db, schema, user_entity, fragmentor_version, fragment_type_mol, fragment_min_mol,
+                      fragment_max_mol, fp_size, fp_active_bits, fp_count, workpath, isotope, stereo, extralabels,
+                      debug)
+    r = reaction_load(db, schema, user_entity, fragmentor_version, fragment_type_cgr, fragment_min_cgr,
+                      fragment_max_cgr, fragment_dynbond_cgr, fp_size, fp_active_bits, fp_count, workpath, isotope,
+                      stereo, extralabels, debug)
+    mp, rc, *_ = data_load(db, schema, user_entity, debug=debug)
+    if get_db:
+        return m, r, mp, rc, db
+    return m, r, mp, rc

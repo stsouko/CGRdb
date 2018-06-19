@@ -27,7 +27,7 @@ class Loader:
     @classmethod
     def load_schemas(cls, user_entity=None):
         if not cls.__schemas:
-            from pony.orm import Database, sql_debug
+            from pony.orm import sql_debug
             from .config import (DB_DATA_LIST, DEBUG, DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT, DATA_ISOTOPE,
                                  DATA_STEREO, DATA_EXTRALABELS, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
                                  FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR,
@@ -37,19 +37,18 @@ class Loader:
                 sql_debug(True)
 
             for schema in DB_DATA_LIST:
-                x = Database()
-                cls.__schemas[schema] = x
-                cls.__databases[schema] = load_tables(x, schema, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL,
-                                                      FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR,
-                                                      FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, FP_SIZE,
-                                                      FP_ACTIVE_BITS, FP_COUNT, WORKPATH,
-                                                      user_entity, DATA_ISOTOPE, DATA_STEREO, DATA_EXTRALABELS, DEBUG)
+                m, r, *_, db = load_tables(schema, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
+                                           FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR,
+                                           FRAGMENT_DYNBOND_CGR, FP_SIZE, FP_ACTIVE_BITS, FP_COUNT, WORKPATH,
+                                           user_entity, DATA_ISOTOPE, DATA_STEREO, DATA_EXTRALABELS, DEBUG, True)
+                cls.__schemas[schema] = db
+                cls.__databases[schema] = m, r
                 if DEBUG:
-                    x.bind('sqlite', 'database.sqlite')
+                    db.bind('sqlite', 'database.sqlite')
                 else:
-                    x.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME, port=DB_PORT)
+                    db.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME, port=DB_PORT)
 
-                x.generate_mapping(create_tables=False)
+                db.generate_mapping(create_tables=False)
 
     @classmethod
     def list_databases(cls):
