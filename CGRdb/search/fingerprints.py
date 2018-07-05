@@ -21,11 +21,13 @@
 #
 from hashlib import md5
 from bitstring import BitArray
-from CGRtools.containers import CGRContainer
+from CGRtools.containers import ReactionContainer, MergedReaction
 from CIMtools.preprocessing import Fragmentor
 
 
 def _mixin_factory(fp_size, fp_count, fp_active_bits):
+    fp_count_i = fp_count + 1
+
     class Fingerprints:
         @classmethod
         def descriptors_to_fingerprints(cls, descriptors, bit_array=True):
@@ -42,18 +44,21 @@ def _mixin_factory(fp_size, fp_count, fp_active_bits):
 
         @staticmethod
         def __get_fingerprints(df, bit_array=True):
-            prefixes = []
-            for _, s in df.iterrows():
-                prefixes.append(set(['{}_{}'.format(i, k) for k, v in s.items()
-                                     for i in range(1, int(v) + 1) if v and i < fp_count + 1]))
+            bits_map = {}
+            for f in df.columns:
+                prev = []
+                for i in range(1, fp_count_i):
+                    b = BitArray(md5(('{}_{}'.format(i, f)).encode()).digest())
+                    bits_map[(f, i)] = prev = [b[r * fp_size: (r + 1) * fp_size].uint for r in
+                                               range(fp_active_bits)] + prev
+
             result = []
-            for fragments in prefixes:
+            for _, s in df.iterrows():
                 active_bits = set()
-                bits_map = {}
-                for fragment in fragments:
-                    b = BitArray(md5(fragment.encode()).digest())
-                    bits_map[fragment] = [b[r * fp_size: (r + 1) * fp_size].uint for r in range(fp_active_bits)]
-                    active_bits.update(bits_map[fragment])
+                for k, v in s.items():
+                    if v:
+                        active_bits.update(bits_map[(k, v if v < fp_count_i else fp_count)])
+
                 if bit_array:
                     fp = BitArray(2 ** fp_size)
                     fp.set(True, active_bits)
@@ -118,7 +123,7 @@ def reaction_mixin_factory(fragmentor_version, fragment_type, fragment_min, frag
     class FingerprintsReaction(Fingerprints):
         @classmethod
         def _get_descriptors(cls, structures):
-            cgrs = [x if isinstance(x, CGRContainer) else cls.get_cgr(x) for x in structures]
+            cgrs = [cls.get_cgr(x) if isinstance(x, (ReactionContainer, MergedReaction)) else x for x in structures]
             return cls.__fragmentor.fit_transform(cgrs)
 
         __fragmentor = Fragmentor(version=fragmentor_version, header=False, fragment_type=fragment_type,

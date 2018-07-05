@@ -19,7 +19,7 @@
 #  MA 02110-1301, USA.
 #
 from datetime import datetime
-from CGRtools.containers import MoleculeContainer
+from CGRtools.containers import CGRContainer
 from pony.orm import PrimaryKey, Required, Optional, Set, Json
 from .user import mixin_factory as um
 from ..management.molecule.merge_molecules import mixin_factory as mmm
@@ -132,7 +132,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         @property
         def structure(self):
             if self.__cached_structure is None:
-                self.__cached_structure = MoleculeContainer.unpickle(self.data)
+                self.__cached_structure = CGRContainer.unpickle(self.data)
             return self.__cached_structure
 
         __cached_structure = None

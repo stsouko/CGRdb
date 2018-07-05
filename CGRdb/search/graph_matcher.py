@@ -31,19 +31,19 @@ def mixin_factory(isotope=False, stereo=False, extralabels=False):
 
         @classmethod
         def match_structures(cls, g, h):
-            return next(cls.get_matcher(g, h).isomorphisms_iter())
+            return cls.__cgr_reactor.get_mapping(g, h)
 
         @classmethod
         def match_substructures(cls, g, h):
-            return next(cls.get_matcher(g, h).subgraph_isomorphisms_iter())
+            return cls.__cgr_reactor.get_substructure_mapping(g, h)
 
         @classmethod
         def structures_equivalent(cls, g, h):
-            return cls.get_matcher(g, h).is_isomorphic()
+            return cls.__cgr_reactor.is_equal(g, h)
 
         @classmethod
         def is_substructure(cls, g, h):
-            return cls.get_matcher(g, h).subgraph_is_isomorphic()
+            return cls.__cgr_reactor.is_substructure(g, h)
 
     return GraphMatcher
 

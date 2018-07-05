@@ -19,7 +19,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRtools.files.RDFrw import RDFread
+from CGRtools.files import RDFread
 from itertools import zip_longest, count
 from multiprocess import Queue, Process
 from pony.orm import db_session

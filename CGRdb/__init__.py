@@ -21,6 +21,12 @@
 
 
 class Loader:
+    """
+    loader of schemas based on common config.
+
+    use this for equally configured bases.
+    for custom bases use .models.load_tables factory.
+    """
     __schemas = {}
     __databases = {}
 
