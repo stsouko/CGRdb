@@ -47,42 +47,24 @@ def mixin_factory(db):
         def find_structure(cls, structure):
             ri = db.ReactionIndex.get(cgr_signature=structure if isinstance(structure, bytes) else
                                       cls.get_cgr_signature(structure))
-            if ri:
-                return ri.reaction
+            return ri and ri.reaction
 
         @classmethod
-        def find_substructures(cls, structure, number=10, *, pages=3):
+        def find_substructures(cls, structure, number=10):
             """
             cgr substructure search
             :param structure: CGRtools ReactionContainer
             :param number: top limit of returned results. not guarantee returning of all available data.
-            set bigger value for this
-            :param pages: max number of attempts to get required number of reactions from db.
-            if required number is not reached, the next page of query result is taken.
-            :return: list of Reaction entities, list of Tanimoto indexes
+            set bigger value for this. negative value returns generator for all data in db.
+            :return: list of tuples of Reaction entities and Tanimoto indexes
             """
             cgr = cls.get_cgr(structure)
-            rxn, tan = [], []
+            q = ((x, y) for x, y in cls._get_reactions(cgr, 'substructure', number, set_raw=True)
+                 if any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw))
 
-            for x, y in zip(*cls.__get_reactions(cgr, '@>', number, 1, set_raw=True, overload=3)):
-                if any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
-                    rxn.append(x)
-                    tan.append(y)
-            if len(rxn) == number:
-                return rxn, tan
-
-            g = (x for p in range(2, pages + 1) for x in
-                 zip(*cls.__get_reactions(cgr, '@>', number, p, set_raw=True, overload=3)))
-
-            for x, y in g:
-                if x not in rxn and any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw):
-                    rxn.append(x)
-                    tan.append(y)
-                if len(rxn) == number:
-                    break
-            _map = sorted(zip(rxn, tan), reverse=True, key=itemgetter(1))
-
-            return [i for i, _ in _map], [i for _, i in _map]
+            if number < 0:
+                return q
+            return sorted(q, reverse=True, key=itemgetter(1))
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -90,87 +72,140 @@ def mixin_factory(db):
             cgr similar search
             :param structure: CGRtools ReactionContainer
             :param number: top limit of returned results. not guarantee returning of all available data.
-            set bigger value for this
-            :return: list of Reaction entities, list of Tanimoto indexes
+            negative value returns generator for all data in db.
+            :return: list of tuples of Reaction entities and Tanimoto indexes
             """
-            return cls.__get_reactions(structure, '%%', number)
+            q = cls._get_reactions(structure, 'similar', number)
+            if number < 0:
+                return q
+            return sorted(q, reverse=True, key=itemgetter(1))
 
         @classmethod
-        def __get_reactions(cls, structure, operator, number, page=1, set_raw=False, overload=2):
+        def _get_reactions(cls, structure, operator, number, set_raw=False, overload=1.5):
             """
             extract Reaction entities from ReactionIndex entities.
             cache reaction structure in Reaction entities
             :param structure: query structure
-            :param operator: raw sql operator
+            :param operator: raw sql operator (similar or substructure)
+            :param number: number of results. if negative - return all data.
             :return: Reaction entities
             """
             bit_set = cls.get_fingerprint(structure, bit_array=False)
-            sql_select = "x.bit_array::int[] %s '%s'::int[]" % (operator, bit_set)
+            sql_select = "x.bit_array::int[] %s '%s'::int[]" % ('%%' if operator == 'similar' else '@>', bit_set)
             sql_smlar = "smlar(x.bit_array::int[], '%s'::int[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
-            ris, its, iis = [], [], []
             q = select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in db.ReactionIndex if raw_sql(sql_select))
-            for ri, rt, ii in sorted(q.page(page, number * overload),
-                                     key=itemgetter(2), reverse=True):
-                if len(ris) == number:
-                    break
-                if ri not in ris:
-                    ris.append(ri)
-                    its.append(rt)
-                    iis.append(ii)
 
-            rs = {x.id: x for x in cls.select(lambda x: x.id in ris)}
-            mrs = list(db.MoleculeReaction.select(lambda x: x.reaction.id in ris).order_by(lambda x: x.id))
-
-            if set_raw:
-                rsr, sis = defaultdict(list), set()
-                for si, ri in left_join((x.structures.id, x.reaction.id) for x in db.ReactionIndex if x.id in iis):
-                    sis.add(si)
-                    rsr[ri].append(si)
-
-                mss, mis = {}, defaultdict(list)
-                for structure in db.MoleculeStructure.select(lambda x: x.id in sis):
-                    mis[structure.molecule.id].append(structure)
-                    if structure.last:
-                        mss[structure.molecule.id] = structure
-
-                not_last = set(mis).difference(mss)
-                if not_last:
-                    for structure in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
-                        mss[structure.molecule.id] = structure
-
-                combos, mapping = defaultdict(list), defaultdict(list)
-                for mr in mrs:
-                    combos[mr.reaction.id].append([x for x in mis[mr.molecule.id] if x.id in rsr[mr.reaction.id]])
-                    mapping[mr.reaction.id].append((mr.is_product, mr.mapping))
-
-                rrcs = defaultdict(list)
-                for ri in ris:
-                    for combo in product(*combos[ri]):
-                        rc = ReactionContainer()
-                        for ms, (is_p, ms_map) in zip(combo, mapping[ri]):
-                            rc['products' if is_p else 'reagents'].append(
-                                ms.structure.remap(ms_map, copy=True) if ms_map else ms.structure)
-                        rrcs[ri].append(rc)
+            if number < 0:
+                load = 100
             else:
-                mss = {x.molecule.id: x for x in
-                       select(ms for ms in db.MoleculeStructure for mr in db.MoleculeReaction
-                              if ms.molecule == mr.molecule and mr.reaction.id in ris and ms.last)}
+                load = int(number * overload)
+                if load > 100:
+                    load = 100
 
-            rcs = {x: ReactionContainer() for x in ris}
+            page = 1
+            while number:
+                data = sorted(q.page(page, load), key=itemgetter(2), reverse=True)
+                if not data:
+                    break  # no more data available
+
+                ris, its, iis = [], [], []
+                for ri, rt, ii in data:
+                    if ri not in ris:
+                        ris.append(ri)
+                        its.append(rt)
+                        iis.append(ii)
+                        if number == len(ris):
+                            number = 0
+                            break
+                else:
+                    page += 1
+                    if number > 0:
+                        number -= len(ris)
+
+                reactions = list(cls.select(lambda x: x.id in ris))
+
+                if set_raw:
+                    rsr, sis = defaultdict(list), set()
+                    for si, ri in left_join((x.structures.id, x.reaction.id) for x in db.ReactionIndex if x.id in iis):
+                        sis.add(si)
+                        rsr[ri].append(si)
+
+                    mss, mis = {}, defaultdict(list)
+                    for structure in db.MoleculeStructure.select(lambda x: x.id in sis):
+                        mis[structure.molecule.id].append(structure)
+                        if structure.last:
+                            mss[structure.molecule.id] = structure
+
+                    not_last = set(mis).difference(mss)
+                    if not_last:
+                        for structure in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
+                            mss[structure.molecule.id] = structure
+
+                    mrs = cls._get_molecule_reaction_entities(reactions)
+                    cls._load_structures(reactions, mss, mrs)
+                    cls._load_structures_raw(reactions, mis, rsr, mrs)
+                else:
+                    cls._load_structures(reactions)
+                yield from zip(reactions, its)
+
+        @staticmethod
+        def _get_molecule_reaction_entities(reactions):
+            return list(db.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id))
+
+        @staticmethod
+        def _get_last_molecule_structure_entities(reactions):
+            return list(select(ms for ms in db.MoleculeStructure for mr in db.MoleculeReaction
+                               if ms.molecule == mr.molecule and mr.reaction in reactions and ms.last))
+
+        @classmethod
+        def _load_structures_raw(cls, reactions, mis=None, rsr=None, mrs=None):
+            """
+            preload reaction structures
+            :param reactions: reactions entities
+            :param mis: dict of molecule id with list of raw MoleculeStructure found in reaction by query
+            :param rsr: dict of reaction id with list of raw MoleculeStructure ids
+            :param mrs: list of MoleculeReaction entities
+            """
+            if not mrs:
+                mrs = cls._get_molecule_reaction_entities(reactions)
+
+            combos, mapping = defaultdict(list), defaultdict(list)
+            for mr in mrs:
+                ri = mr.reaction.id
+                combos[ri].append([x for x in mis[mr.molecule.id] if x.id in rsr[ri]])
+                mapping[ri].append((mr.is_product, mr.mapping))
+
+            for r in reactions:
+                r.structures_raw = rrcs = []
+                for combo in product(*combos[r.id]):
+                    rc = ReactionContainer()
+                    rrcs.append(rc)
+                    for ms, (is_p, ms_map) in zip(combo, mapping[r.id]):
+                        rc['products' if is_p else 'reagents'].append(ms.structure.remap(ms_map, copy=True)
+                                                                      if ms_map else ms.structure)
+
+        @classmethod
+        def _load_structures(cls, reactions, mss=None, mrs=None):
+            """
+            preload reaction structures
+            :param reactions: Reaction entities
+            :param mss: dict of molecule id: last MoleculeStructure
+            :param mrs: list of MoleculeReaction entities
+            """
+            rs = {x.id: x for x in reactions}
+            if not mrs:
+                mrs = cls._get_molecule_reaction_entities(reactions)
+
+            if not mss:
+                mss = {x.molecule.id: x for x in cls._get_last_molecule_structure_entities(reactions)}
+
+            for r in reactions:
+                r.structure = ReactionContainer()
+
             for mr in mrs:
                 ms = mss[mr.molecule.id]
-                rcs[mr.reaction.id]['products' if mr.is_product else 'reagents'].append(
+                rs[mr.reaction.id].structure['products' if mr.is_product else 'reagents'].append(
                     ms.structure.remap(mr.mapping, copy=True) if mr.mapping else ms.structure)
-
-            out = []
-            for ri in ris:
-                r = rs[ri]
-                r.structure = rcs[ri]
-                if set_raw:
-                    r.structures_raw = rrcs[ri]
-                out.append(r)
-
-            return out, its
 
     return Search
 
