@@ -162,6 +162,7 @@ def mixin_factory(db):
                 if not reactions:
                     break  # no more data available
 
+                page += 1
                 if number > 0:
                     l_reactions = len(reactions)
                     if l_reactions > number:
