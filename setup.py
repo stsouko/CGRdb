@@ -23,6 +23,7 @@ from CGRdb.version import version
 from pathlib import Path
 from setuptools import setup, find_packages
 
+
 setup(
     name='CGRdb',
     version=version(),
@@ -33,7 +34,7 @@ setup(
     author_email='stsouko@live.ru',
     description='CGRdb',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=2.8.13,<2.9', 'CIMtools>=1.4,<1.5', 'bitstring', 'pony'],
+    install_requires=['CGRtools>=2.8.28,<2.9', 'CIMtools>=1.4.6,<1.5', 'bitstring', 'pony'],
     extras_require={'postgres':  ['psycopg2'],
                     'postgres_cffi':  ['cffi', 'psycopg2cffi'],
                     'autocomplete': ['argcomplete']},
@@ -48,7 +49,7 @@ setup(
                  'Operating System :: OS Independent',
                  'Programming Language :: Python',
                  'Programming Language :: Python :: 3',
-                 'Programming Language :: Python :: 3.5',
+                 'Programming Language :: Python :: 3.7',
                  ],
     command_options={'build_sphinx': {'project': ('setup.py', 'CGRdb'),
                                       'version': ('setup.py', version()), 'source_dir': ('setup.py', 'doc'),

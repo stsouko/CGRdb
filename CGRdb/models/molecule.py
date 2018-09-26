@@ -30,14 +30,14 @@ from ..search.molecule import mixin_factory as msm
 
 
 def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, fragment_min, fragment_max, fp_size,
-                fp_active_bits, fp_count, workpath='.', isotope=False, stereo=False, extralabels=False, debug=False):
+                fp_active_bits, fp_count, workpath='.', isotope=False, stereo=False, extralabels=False):
 
     FingerprintsMolecule, FingerprintsIndex = mfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
                                                   fp_size, fp_active_bits, fp_count, workpath)
 
     class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo, extralabels), msm(db), um(user_entity),
                    mmm(db), nsm(db)):
-        _table_ = '%s_molecule' % schema if debug else (schema, 'molecule')
+        _table_ = (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
@@ -111,7 +111,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         __raw = None
 
     class MoleculeStructure(db.Entity, FingerprintsIndex, um(user_entity)):
-        _table_ = '%s_molecule_structure' % schema if debug else (schema, 'molecule_structure')
+        _table_ = (schema, 'molecule_structure')
         id = PrimaryKey(int, auto=True)
         user_id = Required(int, column='user')
         molecule = Required('Molecule')

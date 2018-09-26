@@ -33,14 +33,14 @@ from ..search.reaction import mixin_factory as rsm
 
 def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, fragment_min, fragment_max,
                 fragment_dynbond, fp_size, fp_active_bits, fp_count, workpath='.',
-                isotope=False, stereo=False, extralabels=False, debug=False):
+                isotope=False, stereo=False, extralabels=False):
 
     FingerprintsReaction, FingerprintsIndex = rfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
                                                   fragment_dynbond, fp_size, fp_active_bits, fp_count, workpath)
 
     class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo, extralabels), rsm(db), um(user_entity),
                    rmm(db)):
-        _table_ = '%s_reaction' % schema if debug else (schema, 'reaction')
+        _table_ = (schema, 'reaction')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
@@ -298,7 +298,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
     class MoleculeReaction(db.Entity):
         """ molecule to reaction mapping data and role (reagent, reactant, product)
         """
-        _table_ = '%s_molecule_reaction' % schema if debug else (schema, 'molecule_reaction')
+        _table_ = (schema, 'molecule_reaction')
         id = PrimaryKey(int, auto=True)
         reaction = Required('Reaction')
         molecule = Required('Molecule')
@@ -327,11 +327,10 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         __cached_mapping = None
 
     class ReactionIndex(db.Entity, FingerprintsIndex):
-        _table_ = '%s_reaction_index' % schema if debug else (schema, 'reaction_index')
+        _table_ = (schema, 'reaction_index')
         id = PrimaryKey(int, auto=True)
         reaction = Required('Reaction')
-        structures = Set('MoleculeStructure', table='%s_reaction_index_structure' % schema if debug else
-                         (schema, 'reaction_index_structure'))
+        structures = Set('MoleculeStructure', table=(schema, 'reaction_index_structure'))
 
         cgr_signature = Required(bytes, unique=True)
         signature = Required(bytes)

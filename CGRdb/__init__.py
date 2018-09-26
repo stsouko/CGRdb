@@ -18,6 +18,16 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from os import getenv
+from pathlib import Path
+from sys import path
+
+
+env = getenv('CGR_DB')
+if env:
+    cfg = Path(env)
+    if cfg.is_dir() and (cfg / 'config.py').is_file() and str(cfg) not in path:
+        path.append(str(cfg))
 
 
 class Loader:
@@ -33,27 +43,26 @@ class Loader:
     @classmethod
     def load_schemas(cls, user_entity=None):
         if not cls.__schemas:
-            from pony.orm import sql_debug
-            from .config import (DB_DATA_LIST, DEBUG, DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT, DATA_ISOTOPE,
-                                 DATA_STEREO, DATA_EXTRALABELS, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
-                                 FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR,
-                                 FRAGMENT_DYNBOND_CGR, WORKPATH, FP_SIZE, FP_ACTIVE_BITS, FP_COUNT)
+            try:
+                from config import (DB_DATA_LIST, DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT, DATA_ISOTOPE,
+                                    DATA_STEREO, DATA_EXTRALABELS, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL,
+                                    FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR,
+                                    FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH, FP_SIZE, FP_ACTIVE_BITS, FP_COUNT)
+            except ImportError:
+                print('install config.py correctly')
+                return
+
             from .models import load_tables
-            if DEBUG:
-                sql_debug(True)
 
             for schema in DB_DATA_LIST:
                 m, r, *_, db = load_tables(schema, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
                                            FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR,
                                            FRAGMENT_DYNBOND_CGR, FP_SIZE, FP_ACTIVE_BITS, FP_COUNT, WORKPATH,
-                                           user_entity, DATA_ISOTOPE, DATA_STEREO, DATA_EXTRALABELS, DEBUG, True)
+                                           user_entity, DATA_ISOTOPE, DATA_STEREO, DATA_EXTRALABELS)
                 cls.__schemas[schema] = db
                 cls.__databases[schema] = m, r
-                if DEBUG:
-                    db.bind('sqlite', 'database.sqlite')
-                else:
-                    db.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME, port=DB_PORT)
 
+                db.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME, port=DB_PORT)
                 db.generate_mapping(create_tables=False)
 
     @classmethod

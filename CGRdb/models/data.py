@@ -23,9 +23,9 @@ from pony.orm import PrimaryKey, Required, Set, Json
 from .user import mixin_factory as um
 
 
-def load_tables(db, schema, user_entity, debug=False):
+def load_tables(db, schema, user_entity):
     class MoleculeProperties(db.Entity, um(user_entity)):
-        _table_ = '%s_properties' % schema if debug else (schema, 'properties')
+        _table_ = (schema, 'properties')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
@@ -36,7 +36,7 @@ def load_tables(db, schema, user_entity, debug=False):
             db.Entity.__init__(self, user_id=user.id, structure=structure, data=data)
 
     class ReactionConditions(db.Entity, um(user_entity)):
-        _table_ = '%s_conditions' % schema if debug else (schema, 'conditions')
+        _table_ = (schema, 'conditions')
         id = PrimaryKey(int, auto=True)
         date = Required(datetime, default=datetime.utcnow)
         user_id = Required(int, column='user')
@@ -47,20 +47,18 @@ def load_tables(db, schema, user_entity, debug=False):
             db.Entity.__init__(self, user_id=user.id, structure=structure, data=data)
 
     class MoleculeClass(db.Entity):
-        _table_ = '%s_molecule_class' % schema if debug else (schema, 'molecule_class')
+        _table_ = (schema, 'molecule_class')
         id = PrimaryKey(int, auto=True)
         name = Required(str)
         _type = Required(int, default=0, column='type')
-        structures = Set('Molecule', table='%s_molecule_molecule_class' % schema if debug else
-                                           (schema, 'molecule_molecule_class'))
+        structures = Set('Molecule', table=(schema, 'molecule_molecule_class'))
 
     class ReactionClass(db.Entity):
-        _table_ = '%s_reaction_class' % schema if debug else (schema, 'reaction_class')
+        _table_ = (schema, 'reaction_class')
         id = PrimaryKey(int, auto=True)
         name = Required(str)
         _type = Required(int, default=0, column='type')
-        structures = Set('Reaction', table='%s_reaction_reaction_class' % schema if debug else
-                                           (schema, 'reaction_reaction_class'))
+        structures = Set('Reaction', table=(schema, 'reaction_reaction_class'))
 
     return MoleculeProperties, ReactionConditions, MoleculeClass, ReactionClass
 

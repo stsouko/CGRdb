@@ -126,6 +126,15 @@ def worker(input_queue, output_queue):
 
 
 def populate_core(**kwargs):
+    try:
+        from config import DB_DATA_LIST
+    except ImportError:
+        print('install config.py correctly')
+        return
+    if kwargs['database'] not in DB_DATA_LIST:
+        print('database not found')
+        return
+
     Loader.load_schemas()
     raw_data, clean_data, added_data, upd_data = 0, 0, 0, 0
 

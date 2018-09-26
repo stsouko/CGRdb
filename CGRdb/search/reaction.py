@@ -81,13 +81,14 @@ def mixin_factory(db):
             return sorted(q, reverse=True, key=itemgetter(1))
 
         @classmethod
-        def _get_reactions(cls, structure, operator, number, set_raw=False, overload=1.5):
+        def _get_reactions(cls, structure, operator, number, set_raw=False, overload=1.5, page=1):
             """
             extract Reaction entities from ReactionIndex entities.
             cache reaction structure in Reaction entities
             :param structure: query structure
             :param operator: raw sql operator (similar or substructure)
-            :param number: number of results. if negative - return all data.
+            :param number: number of results. if negative - return all data
+            :param page: starting page in pagination
             :return: Reaction entities
             """
             bit_set = cls.get_fingerprint(structure, bit_array=False)
@@ -102,7 +103,6 @@ def mixin_factory(db):
                 if load > 100:
                     load = 100
 
-            page = 1
             while number:
                 data = sorted(q.page(page, load), key=itemgetter(2), reverse=True)
                 if not data:

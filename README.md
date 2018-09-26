@@ -3,7 +3,7 @@
 INSTALL
 =======
 
-    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=MWUI --process-dependency-links --allow-all-external
+    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=MWUI --process-dependency-links
 
 or
 
@@ -26,3 +26,10 @@ install by checkinstall:
 or
 
     make install
+
+CONFIGURE
+=========
+optional
+
+add to environment key CGR_DB with path/to/config.py directory
+edit config.py_example and put it to config directory by name config.py
