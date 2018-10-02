@@ -18,32 +18,60 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from pony.orm import Database
+from functools import wraps
+from pony.orm import Database, Required, Json, PrimaryKey
 from .data import load_tables as data_load
 from .molecule import load_tables as molecule_load
 from .reaction import load_tables as reaction_load
 from .user import UserADHOC
+from ..version import major_version
 
 
-def load_tables(schema, fragmentor_version=None, fragment_type_mol=3, fragment_min_mol=2, fragment_max_mol=6,
-                fragment_type_cgr=3, fragment_min_cgr=2, fragment_max_cgr=6, fragment_dynbond_cgr=1, fp_size=12,
-                fp_active_bits=2, fp_count=4, workpath='.', user_entity=None, isotope=False, stereo=False,
-                extralabels=False, db=None, get_db=False):
+def post_binder(f):
+    @wraps(f)
+    def wrap(*args, **kwargs):
+        db = f(*args, **kwargs)
+
+        def bind(create_tables=False, **bind_kwargs):
+            db.bind('postgres', **bind_kwargs)
+            db.generate_mapping(create_tables=create_tables)
+            return db
+        return bind
+    return wrap
+
+
+@post_binder
+def load_tables(schema, workpath='.', fragmentor_version=None, fragment_type_mol=3, fragment_min_mol=2,
+                fragment_max_mol=6, fragment_type_cgr=3, fragment_min_cgr=2, fragment_max_cgr=6, fragment_dynbond_cgr=1,
+                fp_size=12, fp_active_bits=2, fp_count=4, user_entity=None, isotope=False, stereo=False,
+                extralabels=False):
+    """
+
+    NOTE! never change default settings!
+    """
 
     if user_entity is None:  # User Entity ADHOC.
         user_entity = UserADHOC
 
-    if db is None:
-        db = Database()
-        get_db = True
+    db = Database()
 
-    m = molecule_load(db, schema, user_entity, fragmentor_version, fragment_type_mol, fragment_min_mol,
-                      fragment_max_mol, fp_size, fp_active_bits, fp_count, workpath, isotope, stereo, extralabels)
-    r = reaction_load(db, schema, user_entity, fragmentor_version, fragment_type_cgr, fragment_min_cgr,
-                      fragment_max_cgr, fragment_dynbond_cgr, fp_size, fp_active_bits, fp_count, workpath, isotope,
-                      stereo, extralabels)
-    mp, rc, *_ = data_load(db, schema, user_entity)
+    molecule_load(db, schema, user_entity, fragmentor_version, fragment_type_mol, fragment_min_mol,
+                  fragment_max_mol, fp_size, fp_active_bits, fp_count, workpath, isotope, stereo, extralabels)
+    reaction_load(db, schema, user_entity, fragmentor_version, fragment_type_cgr, fragment_min_cgr, fragment_max_cgr,
+                  fragment_dynbond_cgr, fp_size, fp_active_bits, fp_count, workpath, isotope, stereo, extralabels)
+    data_load(db, schema, user_entity)
+    return db
 
-    if get_db:
-        return m, r, mp, rc, db
-    return m, r, mp, rc
+
+@post_binder
+def load_config():
+    db = Database()
+
+    class Config(db.Entity):
+        _table_ = 'cgr_db_config'
+        id = PrimaryKey(int, auto=True)
+        name = Required(str)
+        config = Required(Json)
+        version = Required(str, default=major_version)
+
+    return db

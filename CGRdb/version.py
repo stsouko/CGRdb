@@ -21,4 +21,9 @@
 
 
 def version():
-    return '1.2.7'
+    return '1.3.0'
+
+
+def major_version():
+    v = version().split('.')
+    return '.'.join(v[:-1])

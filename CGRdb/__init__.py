@@ -20,8 +20,10 @@
 #
 from os import getenv
 from pathlib import Path
+from pony.orm import db_session
 from sys import path
-
+from .models import load_tables, load_config
+from .version import major_version
 
 env = getenv('CGR_DB')
 if env:
@@ -31,48 +33,47 @@ if env:
 
 
 class Loader:
-    """
-    loader of schemas based on common config.
+    def __init__(self, user=None, password=None, host=None, database=None, port=5432, workpath='/tmp'):
+        """
+        load all schemas from db with compatible version
 
-    use this for equally configured bases.
-    for custom bases use .models.load_tables factory.
-    """
-    __schemas = {}
-    __databases = {}
-
-    @classmethod
-    def load_schemas(cls, user_entity=None):
-        if not cls.__schemas:
+        :param user: if None then used from config
+        :param password: if None then used from config
+        :param host: if None then used from config
+        :param database: if None then used from config
+        :param port: if None then used from config
+        """
+        if user is None or password is None or host is None or database is None or port is None or workpath is None:
             try:
-                from config import (DB_DATA_LIST, DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT, DATA_ISOTOPE,
-                                    DATA_STEREO, DATA_EXTRALABELS, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL,
-                                    FRAGMENT_MIN_MOL, FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR,
-                                    FRAGMENT_MAX_CGR, FRAGMENT_DYNBOND_CGR, WORKPATH, FP_SIZE, FP_ACTIVE_BITS, FP_COUNT)
+                from config import DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT, WORKPATH
             except ImportError:
-                print('install config.py correctly')
-                return
+                raise ImportError('install config.py correctly')
 
-            from .models import load_tables
+        if user is None:
+            user = DB_USER
+        if password is None:
+            password = DB_PASS
+        if host is None:
+            host = DB_HOST
+        if database is None:
+            database = DB_NAME
+        if port is None:
+            port = DB_PORT
+        if workpath is None:
+            workpath = WORKPATH
 
-            for schema in DB_DATA_LIST:
-                m, r, *_, db = load_tables(schema, FRAGMENTOR_VERSION, FRAGMENT_TYPE_MOL, FRAGMENT_MIN_MOL,
-                                           FRAGMENT_MAX_MOL, FRAGMENT_TYPE_CGR, FRAGMENT_MIN_CGR, FRAGMENT_MAX_CGR,
-                                           FRAGMENT_DYNBOND_CGR, FP_SIZE, FP_ACTIVE_BITS, FP_COUNT, WORKPATH,
-                                           user_entity, DATA_ISOTOPE, DATA_STEREO, DATA_EXTRALABELS)
-                cls.__schemas[schema] = db
-                cls.__databases[schema] = m, r
+        self.__schemas = {}
+        config = load_config()(user=user, password=password, host=host, database=database, port=port).Config
+        with db_session:
+            for c in config.select(lambda x: x.version == major_version()):
+                self.__schemas[c.name] = load_tables(c.name, workpath=workpath, **c.config)\
+                    (user=user, password=password, host=host, database=database, port=port)
 
-                db.bind('postgres', user=DB_USER, password=DB_PASS, host=DB_HOST, database=DB_NAME, port=DB_PORT)
-                db.generate_mapping(create_tables=False)
+    def __iter__(self):
+        return list(self.__schemas)
 
-    @classmethod
-    def list_databases(cls):
-        return cls.__databases
+    def __getitem__(self, item):
+        return self.__schemas[item]
 
-    @classmethod
-    def get_database(cls, name):
-        return cls.__databases[name]
-
-    @classmethod
-    def get_schema(cls, name):
-        return cls.__schemas[name]
+    def __contains__(self, item):
+        return item in self.__schemas

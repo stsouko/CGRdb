@@ -30,112 +30,16 @@ from ..models.user import UserADHOC
 from ..utils.reaxys_data import Parser as ReaxysParser
 
 
-class NoneParser:
-    @staticmethod
-    def parse(_):
-        return dict(rxd=None)
-
-
-parsers = dict(reaxys=ReaxysParser, none=NoneParser)
-
-
-def calc(chunk, database, parser):
-    Molecule, Reaction = Loader.get_database(database)
-    data_parser = parsers[parser]()
-
-    raw_data = count()
-    clean_data = count()
-    cleaned, molecules, lrms = [], [], []
-
-    for r in chunk:
-        if r is None:
-            break
-
-        rnum = next(raw_data)
-        try:
-            ml_fear_str, mr = Reaction.get_signature(r, get_merged=True)
-            fear_str, cgr = Reaction.get_cgr_signature(mr, get_cgr=True)
-        except Exception as e:
-            print(e, file=stderr)
-        else:
-            rms = dict(reagents=[], products=[])
-            for i in ('reagents', 'products'):
-                for m in r[i]:
-                    ms = Molecule.get_signature(m)
-                    rms[i].append(ms)
-                    molecules.append((m, ms, rnum))
-
-            lrms.append(rms)
-            cleaned.append((r, fear_str, ml_fear_str, rnum, cgr))
-            next(clean_data)
-
-    if cleaned:
-        rfps = Reaction.get_fingerprints([x for *_, x in cleaned], bit_array=False)
-        mfps = Molecule.get_fingerprints([x for x, *_ in molecules], bit_array=False)
-
-        mol_data = [(m, ms, mf, rnum) for (m, ms, rnum), mf in zip(molecules, mfps)]
-        rxn_data = [(r, rs, ml_fear, rnum, cgr, r_fp, rms, data_parser.parse(r['meta'])) for
-                    (r, rs, ml_fear, rnum, cgr), r_fp, rms in zip(cleaned, rfps, lrms)]
-
-        return next(raw_data), next(clean_data), mol_data, rxn_data
-
-
-def populate(res, database, user):
-    added_data = count()
-    upd_data = count()
-    Molecule, Reaction = Loader.get_database(database)
-
-    raw_num, clean_num, mol_data, rxn_data = res
-
-    with db_session:
-        user = UserADHOC[user]
-        fuck_opt = []
-        for m, ms, mf, rnum in mol_data:
-            mol_db = Molecule.find_structure(ms)
-            if not mol_db:
-                Molecule(m, user, fingerprint=mf, signature=ms)
-            elif mol_db._structures.count() > 1:
-                fuck_opt.append(rnum)
-
-        for r, rs, ml_fear, rnum, cgr, r_fp, rms, meta in rxn_data:
-            reaction = Reaction.find_structure(rs)
-
-            if not reaction:
-                next(added_data)
-                if rnum in fuck_opt:  # if molecules has multiple forms don't use precomputed fields. мне влом.
-                    Reaction(r, user, meta.pop('rxd'), special=meta,
-                             reagents_signatures=rms['reagents'], products_signatures=rms['products'])
-                else:
-                    Reaction(r, user, meta.pop('rxd'), special=meta,
-                             fingerprints=[r_fp], cgr_signatures=[rs], cgrs=[cgr], signatures=[ml_fear],
-                             reagents_signatures=rms['reagents'], products_signatures=rms['products'])
-
-            else:
-                next(upd_data)
-                for c in meta['rxd'] or []:
-                    reaction.add_metadata(c, user)
-                    # Tell child processes to stop
-
-    return next(added_data), next(upd_data), raw_num, clean_num
-
-
-def worker(input_queue, output_queue):
-    for args in iter(input_queue.get, 'STOP'):
-        result = calc(*args[1:])
-        output_queue.put((args[0], result))
-
-
 def populate_core(**kwargs):
     try:
-        from config import DB_DATA_LIST
+        ldr = Loader()
     except ImportError:
         print('install config.py correctly')
         return
-    if kwargs['database'] not in DB_DATA_LIST:
+    if kwargs['database'] not in ldr:
         print('database not found')
         return
 
-    Loader.load_schemas()
     raw_data, clean_data, added_data, upd_data = 0, 0, 0, 0
 
     task_queue, done_queue = Queue(), Queue()
@@ -153,7 +57,7 @@ def populate_core(**kwargs):
         res = done_queue.get()
         print("chunk: %d" % res[0], file=stderr)
         if res[1]:
-            added_num, upd_num, raw_num, clean_num = populate(res[1], kwargs['database'], kwargs['user'])
+            added_num, upd_num, raw_num, clean_num = populate(res[1], ldr[kwargs['database']], kwargs['user'])
             raw_data += raw_num
             clean_data += clean_num
             added_data += added_num
@@ -171,7 +75,7 @@ def populate_core(**kwargs):
             res = done_queue.get()
             print("chunk: %d" % res[0], file=stderr)
             if res[1]:
-                added_num, upd_num, raw_num, clean_num = populate(res[1], kwargs['database'], kwargs['user'])
+                added_num, upd_num, raw_num, clean_num = populate(res[1], ldr[kwargs['database']], kwargs['user'])
                 raw_data += raw_num
                 clean_data += clean_num
                 added_data += added_num
@@ -179,3 +83,97 @@ def populate_core(**kwargs):
 
     print('Data processed\nRaw: %d, Clean: %d, Added: %d, Updated: %d' % (raw_data, clean_data, added_data, upd_data),
           file=stderr)
+
+
+def populate(res, db, user):
+    added_data = count()
+    upd_data = count()
+
+    raw_num, clean_num, mol_data, rxn_data = res
+
+    with db_session:
+        user = UserADHOC[user]
+        fuck_opt = []
+        for m, ms, mf, rnum in mol_data:
+            mol_db = db.Molecule.find_structure(ms)
+            if not mol_db:
+                db.Molecule(m, user, fingerprint=mf, signature=ms)
+            elif mol_db._structures.count() > 1:
+                fuck_opt.append(rnum)
+
+        for r, rs, ml_fear, rnum, cgr, r_fp, rms, meta in rxn_data:
+            reaction = db.Reaction.find_structure(rs)
+
+            if not reaction:
+                next(added_data)
+                if rnum in fuck_opt:  # if molecules has multiple forms don't use precomputed fields. мне влом.
+                    db.Reaction(r, user, meta.pop('rxd'), special=meta,
+                                reagents_signatures=rms['reagents'], products_signatures=rms['products'])
+                else:
+                    db.Reaction(r, user, meta.pop('rxd'), special=meta,
+                                fingerprints=[r_fp], cgr_signatures=[rs], cgrs=[cgr], signatures=[ml_fear],
+                                reagents_signatures=rms['reagents'], products_signatures=rms['products'])
+
+            else:
+                next(upd_data)
+                for c in meta['rxd'] or []:
+                    reaction.add_metadata(c, user)
+                    # Tell child processes to stop
+
+    return next(added_data), next(upd_data), raw_num, clean_num
+
+
+def worker(input_queue, output_queue):
+    for args in iter(input_queue.get, 'STOP'):
+        result = calc(*args[1:])
+        output_queue.put((args[0], result))
+
+
+def calc(chunk, database, parser):
+    db = Loader()[database]
+    data_parser = parsers[parser]()
+
+    raw_data = count()
+    clean_data = count()
+    cleaned, molecules, lrms = [], [], []
+
+    for r in chunk:
+        if r is None:
+            break
+
+        rnum = next(raw_data)
+        try:
+            ml_fear_str, mr = db.Reaction.get_signature(r, get_merged=True)
+            fear_str, cgr = db.Reaction.get_cgr_signature(mr, get_cgr=True)
+        except Exception as e:
+            print(e, file=stderr)
+        else:
+            rms = dict(reagents=[], products=[])
+            for i in ('reagents', 'products'):
+                for m in r[i]:
+                    ms = db.Molecule.get_signature(m)
+                    rms[i].append(ms)
+                    molecules.append((m, ms, rnum))
+
+            lrms.append(rms)
+            cleaned.append((r, fear_str, ml_fear_str, rnum, cgr))
+            next(clean_data)
+
+    if cleaned:
+        rfps = db.Reaction.get_fingerprints([x for *_, x in cleaned], bit_array=False)
+        mfps = db.Molecule.get_fingerprints([x for x, *_ in molecules], bit_array=False)
+
+        mol_data = [(m, ms, mf, rnum) for (m, ms, rnum), mf in zip(molecules, mfps)]
+        rxn_data = [(r, rs, ml_fear, rnum, cgr, r_fp, rms, data_parser.parse(r['meta'])) for
+                    (r, rs, ml_fear, rnum, cgr), r_fp, rms in zip(cleaned, rfps, lrms)]
+
+        return next(raw_data), next(clean_data), mol_data, rxn_data
+
+
+class NoneParser:
+    @staticmethod
+    def parse(_):
+        return dict(rxd=None)
+
+
+parsers = dict(reaxys=ReaxysParser, none=NoneParser)

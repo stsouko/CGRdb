@@ -22,30 +22,44 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
 from importlib.util import find_spec
 from .main_create import create_core
+from .main_init import init_core
 from .main_populate import populate_core
 from ..version import version
 
 
 def populate(subparsers):
-    parser = subparsers.add_parser('populate', help='This utility fills database with new entities',
+    parser = subparsers.add_parser('populate', help='fill reaction databases',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--input', '-i', default='input.rdf', type=FileType(), help='RDF inputfile')
     parser.add_argument('--parser', '-p', default='none', choices=['reaxys', 'none'], type=str, help='Data Format')
-    parser.add_argument('--chunk', '-c', default=100, type=int, help='Chunks size')
+    parser.add_argument('--chunk', '-c', default=1000, type=int, help='Chunks size')
     parser.add_argument('--n_jobs', '-n', default=4, type=int, help='Parallel jobs')
     parser.add_argument('--user', '-u', default=1, type=int, help='User id')
     parser.add_argument("--database", '-db', required=True, help='Database name for populate')
     parser.set_defaults(func=populate_core)
 
 
-def create_db(subparsers):
-    parser = subparsers.add_parser('create', help='This utility create new db',
+def init_db(subparsers):
+    parser = subparsers.add_parser('init', help='initialize postgres db for cartridge using',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--name', '-n', help='schema name', required=True)
     parser.add_argument('--user', '-u', help='admin login')
     parser.add_argument('--pass', '-p', help='admin pass')
     parser.add_argument('--host', '-H', help='host name')
+    parser.add_argument('--port', '-P', help='host name')
     parser.add_argument('--base', '-b', help='database name')
+    parser.set_defaults(func=init_core)
+
+
+def create_db(subparsers):
+    parser = subparsers.add_parser('create', help='create new reactions db',
+                                   formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--user', '-u', help='admin login')
+    parser.add_argument('--pass', '-p', help='admin pass')
+    parser.add_argument('--host', '-H', help='host name')
+    parser.add_argument('--port', '-P', help='host name')
+    parser.add_argument('--base', '-b', help='database name')
+    parser.add_argument('--name', '-n', help='schema name', required=True)
+    parser.add_argument('--config', '-c', default=None, type=FileType(), help='database config in JSON format')
     parser.set_defaults(func=create_core)
 
 
@@ -56,6 +70,7 @@ def argparser():
 
     create_db(subparsers)
     populate(subparsers)
+    init_db(subparsers)
 
     if find_spec('argcomplete'):
         from argcomplete import autocomplete

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3.4
 # -*- coding: utf-8 -*-
 #
 #  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
@@ -19,85 +18,75 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from json import load
 from pony.orm import db_session
-from ..models import load_tables
+from ..models import load_tables, load_config
 
 
 def create_core(**kwargs):
-    if any(kwargs[x] is None for x in ('user', 'pass', 'host', 'base')):
+    if any(kwargs[x] is None for x in ('user', 'pass', 'host', 'base', 'port')):
         try:
-            from config import DB_PASS, DB_HOST, DB_USER, DB_NAME
+            from config import DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT
         except ImportError:
             print('set all keys or install config.py correctly')
             return
 
     schema = kwargs['name']
     user = DB_USER if kwargs['user'] is None else kwargs['user']
-    password = DB_PASS if kwargs['pass'] is None else kwargs['pass']
+    pswd = DB_PASS if kwargs['pass'] is None else kwargs['pass']
     host = DB_HOST if kwargs['host'] is None else kwargs['host']
     base = DB_NAME if kwargs['base'] is None else kwargs['base']
+    port = DB_PORT if kwargs['port'] is None else kwargs['port']
+    config = kwargs['config'] and load(kwargs['config']) or {}
 
-    *_, db = load_tables(schema)
-    create_tables(db, schema, user, password, host, base)
+    tables = load_tables(schema, workpath='.', **config)(user=user, password=pswd, host=host, database=base, port=port,
+                                                         create_tables=True)
+    db_conf = load_config()(user=user, password=pswd, host=host, database=base, port=port)
+
+    fix_tables(tables, schema)
+    with db_session:
+        db_conf.Config(name=schema, config=config)
 
 
-def create_tables(db, schema, user, password, host, base):
-    db.bind('postgres', user=user, password=password, host=host, database=base)
-    db.generate_mapping(create_tables=True)
+def fix_tables(db, schema):
+    with db_session:
+        db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
+        db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
+        db.execute(f'CREATE OR REPLACE FUNCTION {schema}.json2int_arr_tr()\n'
+                   'RETURNS trigger AS\n'
+                   '$$BODY$$\n'
+                   'BEGIN\n'
+                   '    NEW.bit_array = ARRAY(SELECT jsonb_array_elements_text(NEW.bit_list));\n'
+                   '    RETURN NEW;\n'
+                   'END\n'
+                   '$$BODY$$\n'
+                   'LANGUAGE plpgsql')
 
     with db_session:
-        ext_smlar = 'CREATE EXTENSION IF NOT EXISTS smlar'
-        ext_intarr = 'CREATE EXTENSION IF NOT EXISTS intarray'
+        db.execute(f'ALTER TABLE {schema}.reaction_index ADD bit_array INT[] NOT NULL')
+        db.execute(f'ALTER TABLE {schema}.molecule_structure ADD bit_array INT[] NOT NULL')
 
-        json2int_arr = 'CREATE OR REPLACE FUNCTION {0}.json2int_arr_tr()\n' \
-                       'RETURNS trigger AS\n' \
-                       '$BODY$\n' \
-                       'BEGIN\n' \
-                       '    NEW.bit_array = ARRAY(SELECT jsonb_array_elements_text(NEW.bit_list));\n' \
-                       '    RETURN NEW;\n' \
-                       'END\n' \
-                       '$BODY$\n' \
-                       'LANGUAGE plpgsql'.format(schema)
+        db.execute('CREATE TRIGGER list_to_array\n'
+                   'BEFORE INSERT OR UPDATE\n'
+                   f'ON {schema}.molecule_structure\n'
+                   'FOR EACH ROW\n'
+                   f'EXECUTE PROCEDURE {schema}.json2int_arr_tr()')
 
-        db.execute(ext_smlar)
-        db.execute(ext_intarr)
-        db.execute(json2int_arr)
+        db.execute('CREATE TRIGGER list_to_array\n'
+                   'BEFORE INSERT OR UPDATE\n'
+                   f'ON {schema}.reaction_index\n'
+                   'FOR EACH ROW\n'
+                   f'EXECUTE PROCEDURE {schema}.json2int_arr_tr()')
 
     with db_session:
-        array_ri = 'ALTER TABLE {0}.reaction_index ADD bit_array INT[] NOT NULL'.format(schema)
-        array_ms = 'ALTER TABLE {0}.molecule_structure ADD bit_array INT[] NOT NULL'.format(schema)
+        db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON {schema}.molecule_structure USING '
+                   'GIST (bit_array _int4_sml_ops)')
 
-        trigger_ms = 'CREATE TRIGGER list_to_array\n' \
-                     'BEFORE INSERT OR UPDATE\n' \
-                     'ON {0}.molecule_structure\n' \
-                     'FOR EACH ROW\n' \
-                     'EXECUTE PROCEDURE {0}.json2int_arr_tr()'.format(schema)
+        db.execute(f'CREATE INDEX idx_smlar_reaction_index ON {schema}.reaction_index USING '
+                   'GIST (bit_array _int4_sml_ops)')
 
-        trigger_ri = 'CREATE TRIGGER list_to_array\n' \
-                     'BEFORE INSERT OR UPDATE\n' \
-                     'ON {0}.reaction_index\n' \
-                     'FOR EACH ROW\n' \
-                     'EXECUTE PROCEDURE {0}.json2int_arr_tr()'.format(schema)
+        db.execute(f'CREATE INDEX idx_subst_molecule_structure ON {schema}.molecule_structure USING '
+                   'GIN (bit_array gin__int_ops)')
 
-        db.execute(array_ri)
-        db.execute(array_ms)
-        db.execute(trigger_ms)
-        db.execute(trigger_ri)
-
-    with db_session:
-        smlar_ms = 'CREATE INDEX idx_smlar_molecule_structure ON {0}.molecule_structure USING ' \
-                   'GIST (bit_array _int4_sml_ops)'.format(schema)
-
-        smlar_ri = 'CREATE INDEX idx_smlar_reaction_index ON {0}.reaction_index USING ' \
-                   'GIST (bit_array _int4_sml_ops)'.format(schema)
-
-        subst_ms = 'CREATE INDEX idx_subst_molecule_structure ON {0}.molecule_structure USING ' \
-                   'GIN (bit_array gin__int_ops)'.format(schema)
-
-        subst_ri = 'CREATE INDEX idx_subst_reaction_index ON {0}.reaction_index USING ' \
-                   'GIN (bit_array gin__int_ops)'.format(schema)
-
-        db.execute(smlar_ms)
-        db.execute(smlar_ri)
-        db.execute(subst_ms)
-        db.execute(subst_ri)
+        db.execute(f'CREATE INDEX idx_subst_reaction_index ON {schema}.reaction_index USING '
+                   'GIN (bit_array gin__int_ops)')
