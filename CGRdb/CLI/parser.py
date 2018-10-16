@@ -42,22 +42,23 @@ def populate(subparsers):
 def init_db(subparsers):
     parser = subparsers.add_parser('init', help='initialize postgres db for cartridge using',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--user', '-u', help='admin login')
-    parser.add_argument('--pass', '-p', help='admin pass')
-    parser.add_argument('--host', '-H', help='host name')
-    parser.add_argument('--port', '-P', help='host name')
-    parser.add_argument('--base', '-b', help='database name')
+    parser.add_argument('--user', '-u', default='postgres', help='admin login')
+    parser.add_argument('--password', '-p', required=True, help='admin pass')
+    parser.add_argument('--host', '-H', default='localhost', help='host name')
+    parser.add_argument('--port', '-P', default=5432, help='database port')
+    parser.add_argument('--base', '-b', default='postgres', help='database name')
+    parser.add_argument('--name', '-n', default='public', help='schema name')
     parser.set_defaults(func=init_core)
 
 
 def create_db(subparsers):
     parser = subparsers.add_parser('create', help='create new reactions db',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--user', '-u', help='admin login')
-    parser.add_argument('--pass', '-p', help='admin pass')
-    parser.add_argument('--host', '-H', help='host name')
-    parser.add_argument('--port', '-P', help='host name')
-    parser.add_argument('--base', '-b', help='database name')
+    parser.add_argument('--user', '-u', default='postgres', help='admin login')
+    parser.add_argument('--password', '-p', required=True, help='admin pass')
+    parser.add_argument('--host', '-H', default='localhost', help='host name')
+    parser.add_argument('--port', '-P', default=5432, help='database port')
+    parser.add_argument('--base', '-b', default='postgres', help='database name')
     parser.add_argument('--name', '-n', help='schema name', required=True)
     parser.add_argument('--config', '-c', default=None, type=FileType(), help='database config in JSON format')
     parser.set_defaults(func=create_core)

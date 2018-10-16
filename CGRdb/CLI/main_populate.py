@@ -30,7 +30,8 @@ from ..models.user import UserADHOC
 from ..utils.reaxys_data import Parser as ReaxysParser
 
 
-def populate_core(**kwargs):
+def populate_core(args):
+    kwargs = vars(args)
     try:
         ldr = Loader()
     except ImportError:

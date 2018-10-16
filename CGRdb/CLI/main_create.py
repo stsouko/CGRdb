@@ -23,25 +23,13 @@ from pony.orm import db_session
 from ..models import load_tables, load_config
 
 
-def create_core(**kwargs):
-    if any(kwargs[x] is None for x in ('user', 'pass', 'host', 'base', 'port')):
-        try:
-            from config import DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT
-        except ImportError:
-            print('set all keys or install config.py correctly')
-            return
+def create_core(args):
+    schema = args.name
+    config = args.config and load(args.config) or {}
 
-    schema = kwargs['name']
-    user = DB_USER if kwargs['user'] is None else kwargs['user']
-    pswd = DB_PASS if kwargs['pass'] is None else kwargs['pass']
-    host = DB_HOST if kwargs['host'] is None else kwargs['host']
-    base = DB_NAME if kwargs['base'] is None else kwargs['base']
-    port = DB_PORT if kwargs['port'] is None else kwargs['port']
-    config = kwargs['config'] and load(kwargs['config']) or {}
-
-    tables = load_tables(schema, workpath='.', **config)(user=user, password=pswd, host=host, database=base, port=port,
-                                                         create_tables=True)
-    db_conf = load_config()(user=user, password=pswd, host=host, database=base, port=port)
+    tables = load_tables(schema, workpath='.', **config)(user=args.user, password=args.password, host=args.host,
+                                                         database=args.base, port=args.port, create_tables=True)
+    db_conf = load_config()(user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
 
     fix_tables(tables, schema)
     with db_session:

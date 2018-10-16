@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -25,6 +25,6 @@ def launcher():
     _argparser = argparser()
     args = _argparser.parse_args()
     if 'func' in args:
-        args.func(**vars(args))
+        args.func(args)
     else:
         _argparser.print_help()

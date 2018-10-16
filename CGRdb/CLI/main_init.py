@@ -21,25 +21,12 @@
 from pony.orm import db_session, Database
 
 
-def init_core(**kwargs):
-    if any(kwargs[x] is None for x in ('user', 'pass', 'host', 'base')):
-        try:
-            from config import DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT
-        except ImportError:
-            print('set all keys or install config.py correctly')
-            return
-
-    user = DB_USER if kwargs['user'] is None else kwargs['user']
-    pswd = DB_PASS if kwargs['pass'] is None else kwargs['pass']
-    host = DB_HOST if kwargs['host'] is None else kwargs['host']
-    base = DB_NAME if kwargs['base'] is None else kwargs['base']
-    port = DB_PORT if kwargs['port'] is None else kwargs['port']
-
+def init_core(args):
     db = Database()
-    db.bind('postgres', user=user, password=pswd, host=host, database=base, port=port)
+    db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
 
     with db_session:
-        db.execute('CREATE TABLE IF NOT EXISTS cgr_db_config\n'
+        db.execute(f'CREATE TABLE IF NOT EXISTS {args.name}.cgr_db_config\n'
                    '(\n'
                    '    id serial PRIMARY KEY NOT NULL,\n'
                    '    name text NOT NULL,\n'
