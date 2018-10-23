@@ -70,10 +70,19 @@ class Loader:
                     (user=user, password=password, host=host, database=database, port=port)
 
     def __iter__(self):
-        return list(self.__schemas)
+        return iter(self.__schemas)
 
     def __getitem__(self, item):
         return self.__schemas[item]
 
     def __contains__(self, item):
         return item in self.__schemas
+
+    def keys(self):
+        return self.__schemas.keys()
+
+    def values(self):
+        return self.__schemas.values()
+
+    def items(self):
+        return self.__schemas.items()
