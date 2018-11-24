@@ -226,19 +226,23 @@ def mixin_factory(db, schema):
                             sis = sis[se]
                             sts = sts[se]
                     else:
-                        # FIXME use slices right in the query after pony bug fixing
-                        mis, sis, sts = select((x.molecule_arr, x.id_arr, x.t_arr) for x in db.SearchCache if x.signature == sig and x.search_operator == operator).first()
                         if number >= 0:
-                            mis = mis[se]
-                            sis = sis[se]
-                            sts = sts[se]
+                            mis, sis, sts = select(
+                                (x.molecule_arr[start:end], x.id_arr[start:end], x.t_arr[start:end]) for x in
+                                db.SearchCache if
+                                x.signature == sig and x.search_operator == operator).first()
+                        else:
+                            mis, sis, sts = select((x.molecule_arr, x.id_arr, x.t_arr) for x in db.SearchCache if
+                                                   x.signature == sig and x.search_operator == operator).first()
                 else:
-                    # FIXME use slices right in the query after pony bug fixing
-                    mis, sis, sts = select((x.molecule_arr, x.id_arr, x.t_arr) for x in db.SearchCache if x.signature == sig and x.search_operator == operator).first()
                     if number >= 0:
-                        mis = mis[se]
-                        sis = sis[se]
-                        sts = sts[se]
+                        mis, sis, sts = select(
+                            (x.molecule_arr[start:end], x.id_arr[start:end], x.t_arr[start:end]) for x in db.SearchCache
+                            if
+                            x.signature == sig and x.search_operator == operator).first()
+                    else:
+                        mis, sis, sts = select((x.molecule_arr, x.id_arr, x.t_arr) for x in db.SearchCache if
+                                               x.signature == sig and x.search_operator == operator).first()
             ms = {x.id: x for x in cls.select(lambda x: x.id in mis)}
 
             if set_raw:
