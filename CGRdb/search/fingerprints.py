@@ -23,6 +23,7 @@ from hashlib import md5
 from bitstring import BitArray
 from CGRtools.containers import ReactionContainer, MergedReaction
 from CIMtools.preprocessing import Fragmentor
+from pandas import DataFrame
 
 
 def _mixin_factory(fp_size, fp_count, fp_active_bits):
@@ -124,7 +125,11 @@ def reaction_mixin_factory(fragmentor_version, fragment_type, fragment_min, frag
         @classmethod
         def _get_descriptors(cls, structures):
             cgrs = [cls.get_cgr(x) if isinstance(x, (ReactionContainer, MergedReaction)) else x for x in structures]
-            return cls.__fragmentor.fit_transform(cgrs)
+            try:
+                f = cls.__fragmentor.fit_transform(cgrs)
+            except:
+                f = DataFrame(index=range(len(structures)))
+            return f
 
         __fragmentor = Fragmentor(version=fragmentor_version, header=False, fragment_type=fragment_type,
                                   min_length=fragment_min, max_length=fragment_max, workpath=workpath,
