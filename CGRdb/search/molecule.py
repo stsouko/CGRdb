@@ -23,7 +23,7 @@ from collections import defaultdict
 from operator import itemgetter
 from pony.orm import select, left_join
 
-from CGRdb.search.molecule_cache import MoleculeCache
+from .molecule_cache import MoleculeCache
 
 
 def mixin_factory(db, schema):
@@ -215,7 +215,7 @@ def mixin_factory(db, schema):
                     sis = sis[se]
                     sts = sts[se]
             else:
-                if not db.SearchCache.exists(signature=sig, search_operator=operator):
+                if not db.SearchCache.exists(signature=sig, operator=operator):
                     bit_set = cls.get_fingerprint(structure, bit_array=False)
                     q = db.select("SELECT * FROM %s.get_molecules_func_arr($bit_set, $operator, $sig, $schema)" % schema, {'bit_set' : "%s" % bit_set, 'operator' : operator, 'sig' : sig, 'schema' : schema})
                     if not db.SearchCache.exists(signature=sig):
@@ -228,21 +228,21 @@ def mixin_factory(db, schema):
                     else:
                         if number >= 0:
                             mis, sis, sts = select(
-                                (x.molecule_arr[start:end], x.id_arr[start:end], x.t_arr[start:end]) for x in
+                                (x.molecules[start:end], x.structures[start:end], x.tanimotos[start:end]) for x in
                                 db.SearchCache if
-                                x.signature == sig and x.search_operator == operator).first()
+                                x.signature == sig and x.operator == operator).first()
                         else:
-                            mis, sis, sts = select((x.molecule_arr, x.id_arr, x.t_arr) for x in db.SearchCache if
-                                                   x.signature == sig and x.search_operator == operator).first()
+                            mis, sis, sts = select((x.molecules, x.structures, x.tanimotos) for x in db.SearchCache if
+                                                   x.signature == sig and x.operator == operator).first()
                 else:
                     if number >= 0:
                         mis, sis, sts = select(
-                            (x.molecule_arr[start:end], x.id_arr[start:end], x.t_arr[start:end]) for x in db.SearchCache
+                            (x.molecules[start:end], x.structures[start:end], x.tanimotos[start:end]) for x in db.SearchCache
                             if
-                            x.signature == sig and x.search_operator == operator).first()
+                            x.signature == sig and x.operator == operator).first()
                     else:
-                        mis, sis, sts = select((x.molecule_arr, x.id_arr, x.t_arr) for x in db.SearchCache if
-                                               x.signature == sig and x.search_operator == operator).first()
+                        mis, sis, sts = select((x.molecules, x.structures, x.tanimotos) for x in db.SearchCache if
+                                               x.signature == sig and x.operator == operator).first()
             ms = {x.id: x for x in cls.select(lambda x: x.id in mis)}
 
             if set_raw:

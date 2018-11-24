@@ -141,11 +141,11 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         _table_ = (schema, 'molecule_structure_save')
         id = PrimaryKey(int, auto=True)
         signature = Required(bytes)
-        molecule_arr = Required(IntArray)
-        id_arr = Required(IntArray)
-        t_arr = Required(FloatArray)
-        creation_date = Required(datetime)
-        search_operator = Required(str)
+        molecules = Required(IntArray)
+        structures = Required(IntArray)
+        tanimotos = Required(FloatArray)
+        date = Required(datetime)
+        operator = Required(str)
 
     return Molecule
 

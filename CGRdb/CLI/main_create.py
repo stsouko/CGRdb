@@ -111,7 +111,7 @@ def fix_tables(db, schema):
             '    IF result_raw_num >= 1000\n'
             '    THEN\n'
             '      --saving results in "molecule_structure_save" table as arrays\n'
-            '      EXECUTE FORMAT(\'INSERT INTO %s.molecule_structure_save(signature, molecule_arr, id_arr, t_arr, creation_date, search_operator)\n'
+            '      EXECUTE FORMAT(\'INSERT INTO %s.molecule_structure_save(signature, molecules, structures, tanimotos, date, operator)\n'
             '      VALUES (\'\'%s\'\',\n'
             '              (SELECT array_agg(molecule) FROM temp_m_s_table),\n'
             '              (SELECT array_agg(id) FROM temp_m_s_table),\n'
