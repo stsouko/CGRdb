@@ -20,7 +20,7 @@
 #
 from datetime import datetime
 from CGRtools.containers import CGRContainer
-from pony.orm import PrimaryKey, Required, Optional, Set, Json
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray
 from .user import mixin_factory as um
 from ..management.molecule.merge_molecules import mixin_factory as mmm
 from ..management.molecule.new_structure import mixin_factory as nsm
@@ -120,7 +120,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         last = Required(bool, default=True)
         data = Required(Json, optimistic=False)
         signature = Required(bytes, unique=True)
-        bit_array = Required(Json, column='bit_list', optimistic=False)
+        bit_array = Required(IntArray, optimistic=False)
 
         def __init__(self, molecule, structure, user, fingerprint, signature):
             data = structure.pickle()
