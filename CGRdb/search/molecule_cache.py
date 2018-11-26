@@ -3,7 +3,6 @@ from typing import Iterator
 
 
 class MoleculeCache(MutableMapping):
-
     def __init__(self) -> None:
         self._dict = {}
 
