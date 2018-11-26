@@ -334,7 +334,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
 
         cgr_signature = Required(bytes, unique=True)
         signature = Required(bytes)
-        bit_array = Required(IntArray, optimistic=False)
+        bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
 
         def __init__(self, reaction, structures, fingerprint, cgr_signature, signature):
             bs = self.get_bits_list(fingerprint)
