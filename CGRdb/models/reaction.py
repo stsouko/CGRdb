@@ -23,7 +23,7 @@ from CGRtools.preparer import CGRpreparer
 from collections import OrderedDict, defaultdict
 from datetime import datetime
 from itertools import count, product
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, select
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray
 from .user import mixin_factory as um
 from ..management.reaction import mixin_factory as rmm
 from ..search.fingerprints import reaction_mixin_factory as rfp
@@ -334,7 +334,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
 
         cgr_signature = Required(bytes, unique=True)
         signature = Required(bytes)
-        bit_array = Required(Json, column='bit_list', optimistic=False)
+        bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
 
         def __init__(self, reaction, structures, fingerprint, cgr_signature, signature):
             bs = self.get_bits_list(fingerprint)

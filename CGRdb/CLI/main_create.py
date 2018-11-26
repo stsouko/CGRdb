@@ -40,31 +40,6 @@ def fix_tables(db, schema):
     with db_session:
         db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
-        db.execute(f'CREATE OR REPLACE FUNCTION {schema}.json2int_arr_tr()\n'
-                   'RETURNS trigger AS\n'
-                   '$$BODY$$\n'
-                   'BEGIN\n'
-                   '    NEW.bit_array = ARRAY(SELECT jsonb_array_elements_text(NEW.bit_list));\n'
-                   '    RETURN NEW;\n'
-                   'END\n'
-                   '$$BODY$$\n'
-                   'LANGUAGE plpgsql')
-
-    with db_session:
-        db.execute(f'ALTER TABLE {schema}.reaction_index ADD bit_array INT[] NOT NULL')
-        db.execute(f'ALTER TABLE {schema}.molecule_structure ADD bit_array INT[] NOT NULL')
-
-        db.execute('CREATE TRIGGER list_to_array\n'
-                   'BEFORE INSERT OR UPDATE\n'
-                   f'ON {schema}.molecule_structure\n'
-                   'FOR EACH ROW\n'
-                   f'EXECUTE PROCEDURE {schema}.json2int_arr_tr()')
-
-        db.execute('CREATE TRIGGER list_to_array\n'
-                   'BEFORE INSERT OR UPDATE\n'
-                   f'ON {schema}.reaction_index\n'
-                   'FOR EACH ROW\n'
-                   f'EXECUTE PROCEDURE {schema}.json2int_arr_tr()')
 
     with db_session:
         db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON {schema}.molecule_structure USING '
