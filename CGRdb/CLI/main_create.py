@@ -53,3 +53,59 @@ def fix_tables(db, schema):
 
         db.execute(f'CREATE INDEX idx_subst_reaction_index ON {schema}.reaction_index USING '
                    'GIN (bit_array gin__int_ops)')
+
+    with db_session:
+        db.execute(f'CREATE TYPE {schema}.molecule_structure_result AS '
+                   '(molecule_arr int[], id_arr int[], t_arr real[])')
+        db.execute(
+            f'CREATE OR REPLACE FUNCTION "{schema}".get_molecules_func_arr'
+            f'    (structure text, search_operator text, signature bytea)\n'
+            f'    RETURNS setof "{schema}"."molecule_structure_result" AS $$\n'
+            'DECLARE\n'
+            '  sql_op             text;\n'
+            '  result_raw_num     BIGINT;\n'
+            'BEGIN\n'
+            "    IF search_operator = 'similar'\n"
+            '    THEN\n'
+            "        sql_op = '%%';\n"
+            '    ELSE\n'
+            "        sql_op = '@>';\n"
+            '    END IF;\n'
+            '    --saving results matching query into temporary table "help_temp_m_s_table"\n'
+            "    EXECUTE FORMAT('CREATE TEMP TABLE help_temp_m_s_table ON COMMIT DROP AS\n"
+            '        SELECT "x"."molecule", "x"."id", smlar("x".bit_array :: int [], '
+            "            ''%1$s'' :: int [], ''N.i / (N.a + N.b - N.i)'') AS t\n"
+            f'        FROM "{schema}"."molecule_structure" "x"\n'
+            '        WHERE "x".bit_array :: int [] %2$s '
+            "            ''%1$s'' :: int []', structure, sql_op);\n"
+            '    --saving non-duplicate results with unique molecule structures and max Tanimoto index\n'
+            '    --into temporary table "temp_m_s_table" in sorted by Tanimoto index order\n'
+            "    EXECUTE 'CREATE TEMP TABLE temp_m_s_table ON COMMIT DROP AS SELECT * FROM (\n"
+            '        SELECT t1.id, t1.molecule, t1.t\n'
+            '        FROM (SELECT * FROM help_temp_m_s_table) t1\n'
+            '            JOIN (SELECT molecule, max(t) AS t FROM help_temp_m_s_table GROUP BY molecule) t2\n'
+            "            ON t1.molecule = t2.molecule AND t1.t = t2.t) j ORDER BY t DESC';\n"
+            "    EXECUTE 'SELECT COUNT(*) FROM temp_m_s_table'\n"
+            '    INTO result_raw_num;\n'
+            '    IF result_raw_num >= 1000\n'
+            '    THEN\n'
+            '        --saving results in "molecule_structure_save" table as arrays\n'
+            "       EXECUTE FORMAT('INSERT INTO "
+            f'        "{schema}".molecule_structure_save(signature, molecules, structures, tanimotos, date, operator)\n'
+            "        VALUES (''%s'',\n"
+            '            (SELECT array_agg(molecule) FROM temp_m_s_table),\n'
+            '            (SELECT array_agg(id) FROM temp_m_s_table),\n'
+            '            (SELECT array_agg(t) FROM temp_m_s_table),\n'
+            '            CURRENT_TIMESTAMP,\n'
+            "            ''%s'');', signature, search_operator);\n"
+            '    ELSE\n'
+            '        --returning all found results\n'
+            '        return query execute format(\n'
+            "            'SELECT array_agg(molecule) molecule_arr, array_agg(id) id_arr, array_agg(t) t_arr "
+            "                FROM temp_m_s_table');\n"
+            '    END IF;\n'
+            '    DROP TABLE IF EXISTS temp_m_s_table;\n'
+            '    DROP TABLE IF EXISTS help_temp_m_s_table;\n'
+            'END\n'
+            '$$\n'
+            'LANGUAGE plpgsql;\n')

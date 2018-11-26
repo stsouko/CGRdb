@@ -20,7 +20,7 @@
 #
 from datetime import datetime
 from CGRtools.containers import CGRContainer
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray, FloatArray
 from .user import mixin_factory as um
 from ..management.molecule.merge_molecules import mixin_factory as mmm
 from ..management.molecule.new_structure import mixin_factory as nsm
@@ -35,7 +35,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
     FingerprintsMolecule, FingerprintsIndex = mfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
                                                   fp_size, fp_active_bits, fp_count, workpath)
 
-    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo, extralabels), msm(db), um(user_entity),
+    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo, extralabels), msm(db, schema), um(user_entity),
                    mmm(db), nsm(db)):
         _table_ = (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
@@ -136,6 +136,16 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
             return self.__cached_structure
 
         __cached_structure = None
+
+    class SearchCache(db.Entity):
+        _table_ = (schema, 'molecule_structure_save')
+        id = PrimaryKey(int, auto=True)
+        signature = Required(bytes)
+        molecules = Required(IntArray)
+        structures = Required(IntArray)
+        tanimotos = Required(FloatArray)
+        date = Required(datetime)
+        operator = Required(str)
 
     return Molecule
 

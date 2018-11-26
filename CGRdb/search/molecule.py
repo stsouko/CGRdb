@@ -21,10 +21,12 @@
 #
 from collections import defaultdict
 from operator import itemgetter
-from pony.orm import select, raw_sql, left_join
+from pony.orm import select, left_join
+
+from .molecule_cache import MoleculeCache
 
 
-def mixin_factory(db):
+def mixin_factory(db, schema):
     class Search:
         @classmethod
         def structure_exists(cls, structure):
@@ -188,6 +190,8 @@ def mixin_factory(db):
 
                 yield from reactions
 
+        molecule_cache = MoleculeCache()
+
         @classmethod
         def _get_molecules(cls, structure, operator, number, set_raw=False, overload=1.5, page=1):
             """
@@ -200,56 +204,64 @@ def mixin_factory(db):
             :param page: starting page in pagination
             :return: Molecule entities
             """
-            bit_set = cls.get_fingerprint(structure, bit_array=False)
-            sql_select = "x.bit_array::int[] %s '%s'::int[]" % ('%%' if operator == 'similar' else '@>', bit_set)
-            sql_smlar = "smlar(x.bit_array::int[], '%s'::int[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
-            q = select((x.molecule.id, x.id, raw_sql(sql_smlar)) for x in db.MoleculeStructure if raw_sql(sql_select))
-
-            if number < 0:
-                load = 100
+            start = (page - 1) * number
+            end = (page - 1) * number + number
+            se = slice(start, end)
+            sig = cls.get_signature(structure)
+            if sig in cls.molecule_cache:
+                mis, sis, sts = cls.molecule_cache[sig]
+                if number >= 0:
+                    mis = mis[se]
+                    sis = sis[se]
+                    sts = sts[se]
             else:
-                load = int(number * overload)
-                if load > 100:
-                    load = 100
-
-            while number:
-                data = sorted(q.page(page, load), key=itemgetter(2), reverse=True)
-                if not data:
-                    break  # no more data available
-
-                mis, sis, sts = [], [], []
-                for mi, si, st in data:
-                    if mi not in mis:
-                        mis.append(mi)
-                        sis.append(si)
-                        sts.append(st)
-                        if number == len(mis):
-                            number = 0
-                            break  # limit of results len to given number
-                else:
-                    page += 1
-                    if number > 0:
-                        number -= len(mis)
-
-                ms = {x.id: x for x in cls.select(lambda x: x.id in mis)}  # preload Molecule entities
-                if set_raw:
-                    not_last = []
-                    for x in db.MoleculeStructure.select(lambda x: x.id in sis):
-                        m = ms[x.molecule.id]
-                        m.raw_edition = x
-                        if x.last:
-                            m.last_edition = x
+                if not db.SearchCache.exists(signature=sig, operator=operator):
+                    bit_set = cls.get_fingerprint(structure, bit_array=False)
+                    q = db.select(f"SELECT * FROM {schema}.get_molecules_func_arr('{bit_set}', '{operator}', $sig)")[0]
+                    if not db.SearchCache.exists(signature=sig):
+                        mis, sis, sts = cls.molecule_cache[sig] = q
+                        if number >= 0:
+                            mis = mis[se]
+                            sis = sis[se]
+                            sts = sts[se]
+                    else:
+                        if number >= 0:
+                            mis, sis, sts = select(
+                                (x.molecules[start:end], x.structures[start:end], x.tanimotos[start:end]) for x in
+                                db.SearchCache if
+                                x.signature == sig and x.operator == operator).first()
                         else:
-                            not_last.append(m.id)
-
-                    if not_last:
-                        for x in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
-                            ms[x.molecule.id].last_edition = x
+                            mis, sis, sts = select((x.molecules, x.structures, x.tanimotos) for x in db.SearchCache if
+                                                   x.signature == sig and x.operator == operator).first()
                 else:
-                    for x in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.last):
-                        ms[x.molecule.id].last_edition = x
+                    if number >= 0:
+                        mis, sis, sts = select(
+                            (x.molecules[start:end], x.structures[start:end], x.tanimotos[start:end]) for x in
+                            db.SearchCache if
+                            x.signature == sig and x.operator == operator).first()
+                    else:
+                        mis, sis, sts = select((x.molecules, x.structures, x.tanimotos) for x in db.SearchCache if
+                                               x.signature == sig and x.operator == operator).first()
+            ms = {x.id: x for x in cls.select(lambda x: x.id in mis)}
 
-                yield from zip((ms[x] for x in mis), sts)
+            if set_raw:
+                not_last = []
+                for x in db.MoleculeStructure.select(lambda x: x.id in sis):
+                    m = ms[x.molecule.id]
+                    m.raw_edition = x
+                    if x.last:
+                        m.last_edition = x
+                    else:
+                        not_last.append(m.id)
+
+                if not_last:
+                    for x in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
+                        ms[x.molecule.id].last_edition = x
+            else:
+                for x in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.last):
+                    ms[x.molecule.id].last_edition = x
+
+            yield from zip((ms[x] for x in mis), sts)
 
     return Search
 
