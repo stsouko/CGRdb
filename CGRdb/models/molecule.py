@@ -120,7 +120,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         last = Required(bool, default=True)
         data = Required(Json, optimistic=False)
         signature = Required(bytes, unique=True)
-        bit_array = Required(IntArray, optimistic=False)
+        bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
 
         def __init__(self, molecule, structure, user, fingerprint, signature):
             data = structure.pickle()
