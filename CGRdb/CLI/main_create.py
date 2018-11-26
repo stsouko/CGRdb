@@ -42,10 +42,6 @@ def fix_tables(db, schema):
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
 
     with db_session:
-        db.execute(f'ALTER TABLE {schema}.reaction_index ADD bit_array INT[] NOT NULL')
-        db.execute(f'ALTER TABLE {schema}.molecule_structure ADD bit_array INT[] NOT NULL')
-
-    with db_session:
         db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON {schema}.molecule_structure USING '
                    'GIST (bit_array _int4_sml_ops)')
 
