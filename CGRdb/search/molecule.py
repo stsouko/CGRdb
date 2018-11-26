@@ -219,8 +219,7 @@ def mixin_factory(db, schema):
                     bit_set = cls.get_fingerprint(structure, bit_array=False)
                     q = db.select(f"SELECT * FROM {schema}.get_molecules_func_arr('{bit_set}', '{operator}', $sig)")[0]
                     if not db.SearchCache.exists(signature=sig):
-                        cls.molecule_cache[sig] = q
-                        mis, sis, sts = q[0], q[1], q[2]
+                        mis, sis, sts = cls.molecule_cache[sig] = q
                         if number >= 0:
                             mis = mis[se]
                             sis = sis[se]
