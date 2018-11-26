@@ -190,7 +190,8 @@ def mixin_factory(db, schema):
 
                 yield from reactions
 
-        molecule_cache = MoleculeCache()
+        similarity_cache = MoleculeCache()
+        substructure_cache = MoleculeCache()
 
         @classmethod
         def _get_molecules(cls, structure, operator, number, set_raw=False, overload=1.5, page=1):
@@ -204,12 +205,13 @@ def mixin_factory(db, schema):
             :param page: starting page in pagination
             :return: Molecule entities
             """
+            is_substructure_search = operator == 'substructure'
             start = (page - 1) * number
             end = (page - 1) * number + number
             se = slice(start, end)
             sig = cls.get_signature(structure)
-            if sig in cls.molecule_cache:
-                mis, sis, sts = cls.molecule_cache[sig]
+            if sig in cls.substructure_cache if is_substructure_search else sig in cls.similarity_cache:
+                mis, sis, sts = cls.substructure_cache[sig] if is_substructure_search else cls.similarity_cache[sig]
                 if number >= 0:
                     mis = mis[se]
                     sis = sis[se]
@@ -219,7 +221,10 @@ def mixin_factory(db, schema):
                     bit_set = cls.get_fingerprint(structure, bit_array=False)
                     q = db.select(f"SELECT * FROM {schema}.get_molecules_func_arr('{bit_set}', '{operator}', $sig)")[0]
                     if not db.SearchCache.exists(signature=sig):
-                        mis, sis, sts = cls.molecule_cache[sig] = q
+                        if is_substructure_search:
+                            mis, sis, sts = cls.substructure_cache[sig] = q
+                        else:
+                            mis, sis, sts = cls.similarity_cache[sig] = q
                         if number >= 0:
                             mis = mis[se]
                             sis = sis[se]
