@@ -11,10 +11,10 @@ class MoleculeCache(MutableMapping):
     def __setitem__(self, k: str, v) -> None:
         self._clean_old()
         self._dict[k] = v
-        self._expiration[datetime.now()] = k
+        self._expiration[k] = datetime.now()
 
     def __delitem__(self, k) -> None:
-        del self._expiration[list(self._expiration)[list(self._expiration.values()).index(k)]]
+        del self._expiration[k]
         del self._dict[k]
 
     def __getitem__(self, k: str):
@@ -28,7 +28,7 @@ class MoleculeCache(MutableMapping):
 
     def _clean_old(self):
         time_limit = datetime.now() - timedelta(days=1)
-        for time in list(self._expiration):
+        for k, time in list(self._expiration.items()):
             if time < time_limit:
-                del self._dict[self._expiration[time]]
-                del self._expiration[time]
+                del self._dict[k]
+                del self._expiration[k]
