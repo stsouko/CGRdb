@@ -27,6 +27,8 @@ or
 
     make install
 
+Install and set up pg_cron extension, following the [instruction](https://github.com/citusdata/pg_cron/blob/master/README.md#installing-pg_cron)
+
 CONFIGURE
 =========
 optional
