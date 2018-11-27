@@ -26,6 +26,8 @@ class MoleculeCache(MutableMapping):
         return iter(self._dict)
 
     def _clean_old(self):
-        for time in self._expiration:
-            if time < datetime.now() - timedelta(days=1):
+        time_limit = datetime.now() - timedelta(days=1)
+        for time in list(self._expiration.keys()):
+            if time < time_limit:
                 del self._dict[self._expiration[time]]
+                del self._expiration[time]
