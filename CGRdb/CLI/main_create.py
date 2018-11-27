@@ -109,3 +109,9 @@ def fix_tables(db, schema):
             'END\n'
             '$$\n'
             'LANGUAGE plpgsql;\n')
+
+        db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
+
+        db.execute(f"SELECT cron.schedule('0 3 * * *', "
+                   f"$$DELETE FROM {schema}.molecule_structure_save "
+                   f"WHERE date < CURRENT_TIMESTAMP - interval '1 day''$$);")
