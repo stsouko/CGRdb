@@ -24,7 +24,6 @@ from collections import defaultdict
 from itertools import product
 from operator import itemgetter
 from pony.orm import select, raw_sql, left_join
-
 from .molecule_cache import QueryCache
 
 
