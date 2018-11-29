@@ -22,7 +22,6 @@
 from collections import defaultdict
 from operator import itemgetter
 from pony.orm import select, left_join
-
 from .molecule_cache import QueryCache
 
 
