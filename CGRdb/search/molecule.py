@@ -23,7 +23,7 @@ from collections import defaultdict
 from operator import itemgetter
 from pony.orm import select, left_join
 
-from .molecule_cache import MoleculeCache
+from .molecule_cache import QueryCache
 
 
 def mixin_factory(db, schema):
@@ -190,8 +190,8 @@ def mixin_factory(db, schema):
 
                 yield from reactions
 
-        similarity_cache = MoleculeCache()
-        substructure_cache = MoleculeCache()
+        __similarity_cache = QueryCache()
+        __substructure_cache = QueryCache()
 
         @classmethod
         def _get_molecules(cls, structure, operator, number, set_raw=False, overload=1.5, page=1):
@@ -205,7 +205,7 @@ def mixin_factory(db, schema):
             :param page: starting page in pagination
             :return: Molecule entities
             """
-            molecule_cache = cls.substructure_cache if operator == 'substructure' else cls.similarity_cache
+            molecule_cache = cls.__substructure_cache if operator == 'substructure' else cls.__similarity_cache
             start = (page - 1) * number
             end = (page - 1) * number + number
             se = slice(start, end)
@@ -220,7 +220,7 @@ def mixin_factory(db, schema):
                 if not db.MoleculeSearchCache.exists(signature=sig, operator=operator):
                     bit_set = cls.get_fingerprint(structure, bit_array=False)
                     q = db.select(f"SELECT * FROM {schema}.get_molecules_func_arr('{bit_set}', '{operator}', $sig)")[0]
-                    if not db.MoleculeSearchCache.exists(signature=sig):
+                    if not db.MoleculeSearchCache.exists(signature=sig, operator=operator):
                         mis, sis, sts = molecule_cache[sig] = q
                         if number >= 0:
                             mis = mis[se]
