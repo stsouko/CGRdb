@@ -24,9 +24,10 @@ from collections import defaultdict
 from itertools import product
 from operator import itemgetter
 from pony.orm import select, raw_sql, left_join
+from .molecule_cache import QueryCache
 
 
-def mixin_factory(db):
+def mixin_factory(db, schema):
     class Search:
         @classmethod
         def unmapped_structure_exists(cls, structure):
@@ -80,6 +81,9 @@ def mixin_factory(db):
                 return q
             return sorted(q, reverse=True, key=itemgetter(1))
 
+        __similarity_cache = QueryCache()
+        __substructure_cache = QueryCache()
+
         @classmethod
         def _get_reactions(cls, structure, operator, number, set_raw=False, overload=1.5, page=1):
             """
@@ -91,62 +95,72 @@ def mixin_factory(db):
             :param page: starting page in pagination
             :return: Reaction entities
             """
-            bit_set = cls.get_fingerprint(structure, bit_array=False)
-            sql_select = "x.bit_array::int[] %s '%s'::int[]" % ('%%' if operator == 'similar' else '@>', bit_set)
-            sql_smlar = "smlar(x.bit_array::int[], '%s'::int[], 'N.i / (N.a + N.b - N.i)') as T" % bit_set
-            q = select((x.reaction.id, raw_sql(sql_smlar), x.id) for x in db.ReactionIndex if raw_sql(sql_select))
-
-            if number < 0:
-                load = 100
+            reaction_cache = cls.__substructure_cache if operator == 'substructure' else cls.__similarity_cache
+            start = (page - 1) * number
+            end = (page - 1) * number + number
+            se = slice(start, end)
+            sig = cls.get_signature(structure)
+            if sig in reaction_cache:
+                ris, iis, its = reaction_cache[sig]
+                if number >= 0:
+                    ris = ris[se]
+                    iis = iis[se]
+                    its = its[se]
             else:
-                load = int(number * overload)
-                if load > 100:
-                    load = 100
-
-            while number:
-                data = sorted(q.page(page, load), key=itemgetter(2), reverse=True)
-                if not data:
-                    break  # no more data available
-
-                ris, its, iis = [], [], []
-                for ri, rt, ii in data:
-                    if ri not in ris:
-                        ris.append(ri)
-                        its.append(rt)
-                        iis.append(ii)
-                        if number == len(ris):
-                            number = 0
-                            break
+                if not db.ReactionSearchCache.exists(signature=sig, operator=operator):
+                    bit_set = cls.get_fingerprint(structure, bit_array=False)
+                    q = db.select(f"SELECT * FROM {schema}.get_reactions('{bit_set}', '{operator}', $sig)")[0]
+                    if not db.ReactionSearchCache.exists(signature=sig, operator=operator):
+                        ris, iis, its = reaction_cache[sig] = q
+                        if number >= 0:
+                            ris = ris[se]
+                            iis = iis[se]
+                            its = its[se]
+                    else:
+                        if number >= 0:
+                            ris, iis, its = select(
+                                (x.reactions[start:end], x.reaction_indexes[start:end], x.tanimotos[start:end]) for x in
+                                db.ReactionSearchCache if
+                                x.signature == sig and x.operator == operator).first()
+                        else:
+                            mis, sis, sts = select((x.reactions, x.reaction_indexes, x.tanimotos) for x in
+                                                   db.ReactionSearchCache if
+                                                   x.signature == sig and x.operator == operator).first()
                 else:
-                    page += 1
-                    if number > 0:
-                        number -= len(ris)
+                    if number >= 0:
+                        ris, iis, its = select(
+                            (x.reactions[start:end], x.reaction_indexes[start:end], x.tanimotos[start:end]) for x in
+                            db.ReactionSearchCache if
+                            x.signature == sig and x.operator == operator).first()
+                    else:
+                        mis, sis, sts = select((x.reactions, x.reaction_indexes, x.tanimotos) for x in
+                                               db.ReactionSearchCache if
+                                               x.signature == sig and x.operator == operator).first()
 
-                reactions = list(cls.select(lambda x: x.id in ris))
+            reactions = list(cls.select(lambda x: x.id in ris))
+            if set_raw:
+                rsr, sis = defaultdict(list), set()
+                for si, ri in left_join((x.structures.id, x.reaction.id) for x in db.ReactionIndex if x.id in iis):
+                    sis.add(si)
+                    rsr[ri].append(si)
 
-                if set_raw:
-                    rsr, sis = defaultdict(list), set()
-                    for si, ri in left_join((x.structures.id, x.reaction.id) for x in db.ReactionIndex if x.id in iis):
-                        sis.add(si)
-                        rsr[ri].append(si)
+                mss, mis = {}, defaultdict(list)
+                for structure in db.MoleculeStructure.select(lambda x: x.id in sis):
+                    mis[structure.molecule.id].append(structure)
+                    if structure.last:
+                        mss[structure.molecule.id] = structure
 
-                    mss, mis = {}, defaultdict(list)
-                    for structure in db.MoleculeStructure.select(lambda x: x.id in sis):
-                        mis[structure.molecule.id].append(structure)
-                        if structure.last:
-                            mss[structure.molecule.id] = structure
+                not_last = set(mis).difference(mss)
+                if not_last:
+                    for structure in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
+                        mss[structure.molecule.id] = structure
 
-                    not_last = set(mis).difference(mss)
-                    if not_last:
-                        for structure in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
-                            mss[structure.molecule.id] = structure
-
-                    mrs = cls._get_molecule_reaction_entities(reactions)
-                    cls._load_structures(reactions, mss, mrs)
-                    cls._load_structures_raw(reactions, mis, rsr, mrs)
-                else:
-                    cls._load_structures(reactions)
-                yield from zip(reactions, its)
+                mrs = cls._get_molecule_reaction_entities(reactions)
+                cls._load_structures(reactions, mss, mrs)
+                cls._load_structures_raw(reactions, mis, rsr, mrs)
+            else:
+                cls._load_structures(reactions)
+            yield from zip(reactions, its)
 
         @staticmethod
         def _get_molecule_reaction_entities(reactions):

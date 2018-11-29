@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from typing import Iterator
 
 
-class MoleculeCache(MutableMapping):
+class QueryCache(MutableMapping):
     def __init__(self) -> None:
         self._dict = {}
         self._expiration = {}

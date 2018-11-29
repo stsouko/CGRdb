@@ -137,7 +137,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
 
         __cached_structure = None
 
-    class SearchCache(db.Entity):
+    class MoleculeSearchCache(db.Entity):
         _table_ = (schema, 'molecule_structure_save')
         id = PrimaryKey(int, auto=True)
         signature = Required(bytes)

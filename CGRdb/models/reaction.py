@@ -23,7 +23,7 @@ from CGRtools.preparer import CGRpreparer
 from collections import OrderedDict, defaultdict
 from datetime import datetime
 from itertools import count, product
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray
 from .user import mixin_factory as um
 from ..management.reaction import mixin_factory as rmm
 from ..search.fingerprints import reaction_mixin_factory as rfp
@@ -38,7 +38,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
     FingerprintsReaction, FingerprintsIndex = rfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
                                                   fragment_dynbond, fp_size, fp_active_bits, fp_count, workpath)
 
-    class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo, extralabels), rsm(db), um(user_entity),
+    class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo, extralabels), rsm(db, schema), um(user_entity),
                    rmm(db)):
         _table_ = (schema, 'reaction')
         id = PrimaryKey(int, auto=True)
@@ -342,6 +342,16 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
             db.Entity.__init__(self, reaction=reaction, cgr_signature=cgr_signature, signature=signature, bit_array=bs)
             for m in set(structures):
                 self.structures.add(m)
+
+    class ReactionSearchCache(db.Entity):
+        _table_ = (schema, 'reactions_save')
+        id = PrimaryKey(int, auto=True)
+        signature = Required(bytes)
+        reactions = Required(IntArray)
+        reaction_indexes = Required(IntArray)
+        tanimotos = Required(FloatArray)
+        date = Required(datetime)
+        operator = Required(str)
 
     return Reaction
 
