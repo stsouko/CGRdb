@@ -55,9 +55,7 @@ def mixin_factory(db, schema):
             q = ((x, y) for x, y in cls._get_molecules(structure, 'substructure', number, set_raw=True)
                  if cls.is_substructure(x.structure_raw, structure))
 
-            if number < 0:
-                return q
-            return sorted(q, reverse=True, key=itemgetter(1))
+            return q
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -69,9 +67,7 @@ def mixin_factory(db, schema):
             :return: list of tuples of Molecule entities and Tanimoto indexes
             """
             q = cls._get_molecules(structure, 'similar', number)
-            if number < 0:
-                return q
-            return sorted(q, reverse=True, key=itemgetter(1))
+            return q
 
         @classmethod
         def find_reaction_by_reagent(cls, structure, number=10):
@@ -189,11 +185,8 @@ def mixin_factory(db, schema):
 
                 yield from reactions
 
-        __similarity_cache = QueryCache()
-        __substructure_cache = QueryCache()
-
         @classmethod
-        def _get_molecules(cls, structure, operator, number, set_raw=False, overload=1.5, page=1):
+        def _get_molecules(cls, structure, operator, number, set_raw=False, page=1):
             """
             find Molecule entities from MoleculeStructure entities.
             set to Molecule entities raw_structure property's found MoleculeStructure entities
@@ -263,6 +256,9 @@ def mixin_factory(db, schema):
                     ms[x.molecule.id].last_edition = x
 
             yield from zip((ms[x] for x in mis), sts)
+
+        __similarity_cache = QueryCache()
+        __substructure_cache = QueryCache()
 
     return Search
 

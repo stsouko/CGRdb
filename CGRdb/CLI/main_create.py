@@ -67,7 +67,7 @@ def fix_tables(db, schema):
             'BEGIN\n'
             "    IF search_operator = 'similar'\n"
             '    THEN\n'
-            "        sql_op = '%%';\n"
+            "        sql_op = '%';\n"
             '    ELSE\n'
             "        sql_op = '@>';\n"
             '    END IF;\n'
@@ -101,10 +101,16 @@ def fix_tables(db, schema):
             "        return query execute format(\n"
             "            'SELECT ARRAY[]::INT[], ARRAY[]::INT[], ARRAY[]::REAL[]');"
             '    ELSE\n'
-            '        --returning all found results\n'
+            '        IF result_raw_num = 0'
+            '        THEN'
             '        return query execute format(\n'
-            "            'SELECT array_agg(molecule) molecule_arr, array_agg(id) id_arr, array_agg(t) t_arr "
-            "                FROM temp_m_s_table');\n"
+            "            'SELECT ARRAY[]::INT[], ARRAY[]::INT[], ARRAY[]::REAL[]');"
+            '        ELSE'
+            '            --returning all found results\n'
+            '            return query execute format(\n'
+            "                'SELECT array_agg(molecule) molecule_arr, array_agg(id) id_arr, array_agg(t) t_arr "
+            "                    FROM temp_m_s_table');\n"
+            "        END IF;"
             '    END IF;\n'
             '    DROP TABLE IF EXISTS temp_m_s_table;\n'
             '    DROP TABLE IF EXISTS help_temp_m_s_table;\n'
@@ -127,7 +133,7 @@ def fix_tables(db, schema):
             'BEGIN\n'
             "    IF search_operator = 'similar'\n"
             '    THEN\n'
-            "       sql_op = '%%';\n"
+            "       sql_op = '%';\n"
             '    ELSE\n'
             "        sql_op = '@>';\n"
             '    END IF;\n'
@@ -153,10 +159,16 @@ def fix_tables(db, schema):
             '        return query execute format(\n'
             "          'SELECT ARRAY[]::INT[], ARRAY[]::INT[], ARRAY[]::REAL[]');\n"
             '    ELSE\n'
-            '        --returning all found results\n'
+            '        IF result_raw_num = 0'
+            '        THEN'
             '        return query execute format(\n'
-            "            'SELECT array_agg(reaction) reactions, array_agg(id) reaction_indexes, array_agg(t) tanimotos "
-            "                FROM temp_reactions_table');\n"
+            "            'SELECT ARRAY[]::INT[], ARRAY[]::INT[], ARRAY[]::REAL[]');"
+            '        ELSE'
+            '            --returning all found results\n'
+            '            return query execute format(\n'
+            "                'SELECT array_agg(reaction) reactions, array_agg(id) reaction_indexes, "
+            "                    array_agg(t) tanimotos FROM temp_reactions_table');\n"
+            "        END IF;"
             '    END IF;\n'
             '    DROP TABLE IF EXISTS temp_reactions_table;\n'
             'END\n'
