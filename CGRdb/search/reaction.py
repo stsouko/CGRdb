@@ -63,9 +63,7 @@ def mixin_factory(db, schema):
             q = ((x, y) for x, y in cls._get_reactions(cgr, 'substructure', number, set_raw=True)
                  if any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw))
 
-            if number < 0:
-                return q
-            return sorted(q, reverse=True, key=itemgetter(1))
+            return q
 
         @classmethod
         def find_similar(cls, structure, number=10):
@@ -77,15 +75,10 @@ def mixin_factory(db, schema):
             :return: list of tuples of Reaction entities and Tanimoto indexes
             """
             q = cls._get_reactions(structure, 'similar', number)
-            if number < 0:
-                return q
-            return sorted(q, reverse=True, key=itemgetter(1))
-
-        __similarity_cache = QueryCache()
-        __substructure_cache = QueryCache()
+            return q
 
         @classmethod
-        def _get_reactions(cls, structure, operator, number, set_raw=False, overload=1.5, page=1):
+        def _get_reactions(cls, structure, operator, number, set_raw=False, page=1):
             """
             extract Reaction entities from ReactionIndex entities.
             cache reaction structure in Reaction entities
@@ -220,6 +213,9 @@ def mixin_factory(db, schema):
                 ms = mss[mr.molecule.id]
                 rs[mr.reaction.id].structure['products' if mr.is_product else 'reagents'].append(
                     ms.structure.remap(mr.mapping, copy=True) if mr.mapping else ms.structure)
+
+        __similarity_cache = QueryCache()
+        __substructure_cache = QueryCache()
 
     return Search
 

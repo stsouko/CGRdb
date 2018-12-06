@@ -303,7 +303,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         reaction = Required('Reaction')
         molecule = Required('Molecule')
         is_product = Required(bool, default=False)
-        _mapping = Optional(Json, column='mapping')
+        _mapping = Optional(Json, column='mapping', nullable=True)
 
         def __init__(self, reaction, molecule, is_product=False, mapping=None):
             mapping = mapping and self.compressed_mapping(mapping)
