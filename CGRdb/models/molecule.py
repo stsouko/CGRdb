@@ -19,13 +19,13 @@
 #  MA 02110-1301, USA.
 #
 from datetime import datetime
-from CGRtools.containers import CGRContainer
+from CGRtools.containers.common import BaseContainer
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray, FloatArray
 from .user import mixin_factory as um
 from ..management.molecule.merge_molecules import mixin_factory as mmm
 from ..management.molecule.new_structure import mixin_factory as nsm
 from ..search.fingerprints import molecule_mixin_factory as mfp
-from ..search.graph_matcher import mixin_factory as gmm
+# from ..search.graph_matcher import mixin_factory as gmm
 from ..search.molecule import mixin_factory as msm
 
 
@@ -35,7 +35,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
     FingerprintsMolecule, FingerprintsIndex = mfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
                                                   fp_size, fp_active_bits, fp_count, workpath)
 
-    class Molecule(db.Entity, FingerprintsMolecule, gmm(isotope, stereo, extralabels), msm(db, schema), um(user_entity),
+    class Molecule(db.Entity, FingerprintsMolecule, msm(db, schema), um(user_entity),
                    mmm(db), nsm(db)):
         _table_ = (schema, 'molecule')
         id = PrimaryKey(int, auto=True)
@@ -132,7 +132,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         @property
         def structure(self):
             if self.__cached_structure is None:
-                self.__cached_structure = CGRContainer.unpickle(self.data)
+                self.__cached_structure = BaseContainer.unpickle(self.data)
             return self.__cached_structure
 
         __cached_structure = None
