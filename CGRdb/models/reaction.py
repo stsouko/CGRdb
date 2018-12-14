@@ -18,7 +18,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRtools.containers import ReactionContainer, MergedReaction
+from CGRtools.containers import ReactionContainer
 from CGRtools.preparer import CGRpreparer
 from collections import OrderedDict, defaultdict
 from datetime import datetime
@@ -27,18 +27,17 @@ from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray
 from .user import mixin_factory as um
 from ..management.reaction import mixin_factory as rmm
 from ..search.fingerprints import reaction_mixin_factory as rfp
-from ..search.graph_matcher import mixin_factory as gmm
+# from ..search.graph_matcher import mixin_factory as gmm
 from ..search.reaction import mixin_factory as rsm
 
 
 def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, fragment_min, fragment_max,
                 fragment_dynbond, fp_size, fp_active_bits, fp_count, workpath='.',
                 isotope=False, stereo=False, extralabels=False):
-
     FingerprintsReaction, FingerprintsIndex = rfp(fragmentor_version, fragment_type, fragment_min, fragment_max,
                                                   fragment_dynbond, fp_size, fp_active_bits, fp_count, workpath)
 
-    class Reaction(db.Entity, FingerprintsReaction, gmm(isotope, stereo, extralabels), rsm(db, schema), um(user_entity),
+    class Reaction(db.Entity, FingerprintsReaction, rsm(db, schema), um(user_entity),
                    rmm(db)):
         _table_ = (schema, 'reaction')
         id = PrimaryKey(int, auto=True)
@@ -53,7 +52,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         __cgr_core = CGRpreparer()
 
         def __init__(self, structure, user, metadata=None, special=None, fingerprints=None, cgr_signatures=None,
-                     signatures=None, cgrs=None, reagents_signatures=None, products_signatures=None):
+                     cgrs=None, reagents_signatures=None, products_signatures=None):
             """
             storing reaction in DB.
             :param structure: CGRtools ReactionContainer
@@ -65,7 +64,6 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
              order of fingerprints have to be same as in product(A[], B[], C[]) where X[] is ordered by id list of
              structures of molecules.
             :param cgr_signatures: signatures strings of reaction CGR. see fingerprints for details
-            :param signatures: unique signature strings of reaction. see fingerprints for details
             :param cgrs: list of all possible CGRs of reaction. see fingerprints for details
             :param reagents_signatures: signatures of structure reagents in same order as reagents molecules
             :param products_signatures: see reagents_signatures
@@ -74,15 +72,15 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
                                                            products_signatures=products_signatures)
 
             reagents_len = len(structure.reagents)
-            combos, signatures, cgr_signatures, fingerprints, structures, cgrs = \
-                self._prepare_reaction_sf(combos, reagents_len, cgrs, signatures, cgr_signatures, fingerprints, True)
+            combos, cgr_signatures, fingerprints, structures, cgrs = \
+                self._prepare_reaction_sf(combos, reagents_len, cgrs, cgr_signatures, fingerprints, True)
 
             db.Entity.__init__(self, user_id=user.id)
 
             for m, is_p, mapping in (batch[x] for x in sorted(batch)):
                 MoleculeReaction(self, m, is_product=is_p, mapping=mapping)
 
-            self._create_reaction_indexes(combos, fingerprints, cgr_signatures, signatures)
+            self._create_reaction_indexes(combos, fingerprints, cgr_signatures)
 
             for c, r, cc in zip(combos, structures, cgrs):
                 if self.__cached_structure is None:
@@ -99,12 +97,12 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
             if special:
                 self.special = special
 
-        def _create_reaction_indexes(self, combos, fingerprints, cgr_signatures, signatures):
-            for c, fp, cs, s in zip(combos, fingerprints, cgr_signatures, signatures):
-                ReactionIndex(self, {x[1] for x in c}, fp, cs, s)
+        def _create_reaction_indexes(self, combos, fingerprints, cgr_signatures):
+            for c, fp, cs, s in zip(combos, fingerprints, cgr_signatures):
+                ReactionIndex(self, {x[1] for x in c}, fp, cs)
 
         @classmethod
-        def _prepare_reaction_sf(cls, combinations, reagents_len, cgrs=None, signatures=None, cgr_signatures=None,
+        def _prepare_reaction_sf(cls, combinations, reagents_len, cgrs=None, cgr_signatures=None,
                                  fingerprints=None, get_structure_cgr=False):
             """
             prepare index data for structures with filtering of automorphic structures
@@ -113,32 +111,27 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
                                             products=[s[0] for s in x[reagents_len:]]) for x in combinations]
             combo_len = len(structures)
 
-            if signatures is None or len(signatures) != combo_len:
-                signatures, merged = [], []
-                for x in structures:
-                    s, ms = cls.get_signature(x, get_merged=True)
-                    signatures.append(s)
-                    merged.append(ms)
-            else:
-                merged = None
+            signatures = []
+            for x in structures:
+                s, ms = cls.get_signature(x)
+                signatures.append(s)
 
             if cgr_signatures is None or len(cgr_signatures) != combo_len:
                 cgr_signatures, cgrs = [], []
-                for x in merged or structures:
+                for x in structures:
                     s, c = cls.get_cgr_signature(x, get_cgr=True)
                     cgr_signatures.append(s)
                     cgrs.append(c)
             elif cgrs is None or len(cgrs) != combo_len:
-                cgrs = [cls.get_cgr(x) for x in merged or structures]
+                cgrs = [cls.get_cgr(x) for x in structures]
 
             if fingerprints is None or len(fingerprints) != combo_len:
                 fingerprints = cls.get_fingerprints(cgrs, bit_array=False)
 
-            clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
+            clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], []
             clean_cgrs, clean_structures = [], []
-            for cc, s, cs, f, c, r in zip(combinations, signatures, cgr_signatures, fingerprints, cgrs, structures):
+            for cc, s, cs, f, c, r in zip(combinations, cgr_signatures, fingerprints, cgrs, structures):
                 if cs not in clean_cgr_signatures:
-                    clean_signatures.append(s)
                     clean_cgr_signatures.append(cs)
                     clean_fingerprints.append(f)
                     clean_cgrs.append(c)
@@ -146,9 +139,9 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
                     clean_combinations.append(cc)
 
             if get_structure_cgr:
-                return clean_combinations, clean_signatures, clean_cgr_signatures, clean_fingerprints, \
+                return clean_combinations, clean_cgr_signatures, clean_fingerprints, \
                        clean_structures, clean_cgrs
-            return clean_combinations, clean_signatures, clean_cgr_signatures, clean_fingerprints
+            return clean_combinations, clean_cgr_signatures, clean_fingerprints
 
         @classmethod
         def __prepare_molecules_batch(cls, structure, user, reagents_signatures=None, products_signatures=None):
@@ -163,7 +156,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
                     ms = signature_molecule_structure.get(s)
                     n = next(m_count)
                     if ms:
-                        mapping = cls.match_structures(ms.structure, x)
+                        mapping = ms.structure.get_mapping(x)
                         batch[n] = (ms.molecule, is_p, mapping)
 
                         tmp = [(x, ms)]
@@ -191,7 +184,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
                         mapping = None
                     else:
                         m = dups[s]
-                        mapping = cls.match_structures(m.structure, x)
+                        mapping = m.structure.get_mapping(x)
 
                     batch[n] = (m, is_p, mapping)
                     all_combos[n] = [(x, m.last_edition)]
@@ -217,7 +210,8 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
             # preload all molecules structures entities
             molecule_structures, signature_molecule_structure = defaultdict(list), {}
             for ms in select(x for x in db.MoleculeStructure if x.molecule in
-                             select(y.molecule for y in db.MoleculeStructure if y.signature in signatures_set)):
+                                                                select(y.molecule for y in db.MoleculeStructure if
+                                                                       y.signature in signatures_set)):
                 # NEED PR
                 # select(y for x in db.MoleculeStructure if x.signature in signatures_set
                 #        for y in db.MoleculeStructure if y.molecule == x.molecule)
@@ -229,11 +223,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
 
         @classmethod
         def get_cgr(cls, structure):
-            return cls.__cgr_core.condense(structure)
-
-        @classmethod
-        def merge_mols(cls, structure):
-            return cls.__cgr_core.merge_mols(structure)
+            return cls.__cgr_core.compose(structure)
 
         @classmethod
         def get_cgr_signature(cls, structure, get_cgr=False):
@@ -243,11 +233,9 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
             return (signature, cgr) if get_cgr else signature
 
         @classmethod
-        def get_signature(cls, structure, get_merged=False):
-            merged = structure if isinstance(structure, MergedReaction) else cls.merge_mols(structure)
-            signature = merged.get_signature_hash(isotope=isotope, stereo=stereo, hybridization=extralabels,
-                                                  neighbors=extralabels)
-            return (signature, merged) if get_merged else signature
+        def get_signature(cls, structure):
+            return structure.get_signature_hash(isotope=isotope, stereo=stereo, hybridization=extralabels,
+                                                neighbors=extralabels)
 
         @property
         def cgr(self):
@@ -266,7 +254,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
             if self.__cached_structure is None:
                 mrs = list(self.molecules.order_by(lambda x: x.id))
                 mss = {x.molecule.id: x for x in
-                       select(ms for ms in db.MoleculeStructure for mr in MoleculeReaction
+                       select(ms for ms in db.MoleculeStructure for mr in db.MoleculeReaction
                               if ms.molecule == mr.molecule and mr.reaction == self and ms.last)}
 
                 r = ReactionContainer()
@@ -331,15 +319,13 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
         id = PrimaryKey(int, auto=True)
         reaction = Required('Reaction')
         structures = Set('MoleculeStructure', table=(schema, 'reaction_index_structure'))
-
         cgr_signature = Required(bytes, unique=True)
-        signature = Required(bytes)
         bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
 
-        def __init__(self, reaction, structures, fingerprint, cgr_signature, signature):
+        def __init__(self, reaction, structures, fingerprint, cgr_signature):
             bs = self.get_bits_list(fingerprint)
 
-            db.Entity.__init__(self, reaction=reaction, cgr_signature=cgr_signature, signature=signature, bit_array=bs)
+            db.Entity.__init__(self, reaction=reaction, cgr_signature=cgr_signature, bit_array=bs)
             for m in set(structures):
                 self.structures.add(m)
 

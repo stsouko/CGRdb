@@ -53,7 +53,7 @@ def mixin_factory(db, schema):
             :return: list of tuples of Molecule entities and Tanimoto indexes
             """
             q = ((x, y) for x, y in cls._get_molecules(structure, 'substructure', number, set_raw=True)
-                 if cls.is_substructure(x.structure_raw, structure))
+                 if structure < x.structure_raw)
 
             return q
 
