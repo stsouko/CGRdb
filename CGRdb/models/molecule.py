@@ -25,7 +25,6 @@ from .user import mixin_factory as um
 from ..management.molecule.merge_molecules import mixin_factory as mmm
 from ..management.molecule.new_structure import mixin_factory as nsm
 from ..search.fingerprints import molecule_mixin_factory as mfp
-# from ..search.graph_matcher import mixin_factory as gmm
 from ..search.molecule import mixin_factory as msm
 
 

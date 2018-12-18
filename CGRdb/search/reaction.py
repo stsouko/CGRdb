@@ -29,20 +29,11 @@ from .molecule_cache import QueryCache
 
 def mixin_factory(db, schema):
     class Search:
-        @classmethod
-        def unmapped_structure_exists(cls, structure):
-            return db.ReactionIndex.exists(signature=structure if isinstance(structure, bytes) else
-                                           cls.get_signature(structure))
 
         @classmethod
         def structure_exists(cls, structure):
             return db.ReactionIndex.exists(cgr_signature=structure if isinstance(structure, bytes) else
                                            cls.get_cgr_signature(structure))
-
-        @classmethod
-        def find_unmapped_structures(cls, structure):
-            signature = structure if isinstance(structure, bytes) else cls.get_signature(structure)
-            return list(select(x.reaction for x in db.ReactionIndex if x.signature == signature))
 
         @classmethod
         def find_structure(cls, structure):
@@ -61,7 +52,7 @@ def mixin_factory(db, schema):
             """
             cgr = cls.get_cgr(structure)
             q = ((x, y) for x, y in cls._get_reactions(cgr, 'substructure', number, set_raw=True)
-                 if any(cls.is_substructure(rs, cgr) for rs in x.cgrs_raw))
+                 if any(cgr < rs for rs in x.cgrs_raw))
 
             return q
 
@@ -152,7 +143,8 @@ def mixin_factory(db, schema):
                 cls._load_structures(reactions, mss, mrs)
                 cls._load_structures_raw(reactions, mis, rsr, mrs)
             else:
-                cls._load_structures(reactions)
+                if reactions:
+                    cls._load_structures(reactions)
             yield from zip(reactions, its)
 
         @staticmethod

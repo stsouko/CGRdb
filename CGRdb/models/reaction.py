@@ -27,7 +27,6 @@ from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray
 from .user import mixin_factory as um
 from ..management.reaction import mixin_factory as rmm
 from ..search.fingerprints import reaction_mixin_factory as rfp
-# from ..search.graph_matcher import mixin_factory as gmm
 from ..search.reaction import mixin_factory as rsm
 
 
@@ -98,7 +97,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
                 self.special = special
 
         def _create_reaction_indexes(self, combos, fingerprints, cgr_signatures):
-            for c, fp, cs, s in zip(combos, fingerprints, cgr_signatures):
+            for c, fp, cs in zip(combos, fingerprints, cgr_signatures):
                 ReactionIndex(self, {x[1] for x in c}, fp, cs)
 
         @classmethod
@@ -110,11 +109,6 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
             structures = [ReactionContainer(reagents=[s[0] for s in x[:reagents_len]],
                                             products=[s[0] for s in x[reagents_len:]]) for x in combinations]
             combo_len = len(structures)
-
-            signatures = []
-            for x in structures:
-                s, ms = cls.get_signature(x)
-                signatures.append(s)
 
             if cgr_signatures is None or len(cgr_signatures) != combo_len:
                 cgr_signatures, cgrs = [], []
@@ -130,7 +124,7 @@ def load_tables(db, schema, user_entity, fragmentor_version, fragment_type, frag
 
             clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], []
             clean_cgrs, clean_structures = [], []
-            for cc, s, cs, f, c, r in zip(combinations, cgr_signatures, fingerprints, cgrs, structures):
+            for cc, cs, f, c, r in zip(combinations, cgr_signatures, fingerprints, cgrs, structures):
                 if cs not in clean_cgr_signatures:
                     clean_cgr_signatures.append(cs)
                     clean_fingerprints.append(f)

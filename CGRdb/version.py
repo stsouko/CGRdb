@@ -21,7 +21,7 @@
 
 
 def version():
-    return '1.3.2'
+    return '1.4.2'
 
 
 def major_version():
