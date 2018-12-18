@@ -102,7 +102,7 @@ def populate(res, db, user):
             elif mol_db._structures.count() > 1:
                 fuck_opt.append(rnum)
 
-        for r, rs, ml_fear, rnum, cgr, r_fp, rms, meta in rxn_data:
+        for r, rs, rnum, cgr, r_fp, rms, meta in rxn_data:
             reaction = db.Reaction.find_structure(rs)
 
             if not reaction:
@@ -112,7 +112,7 @@ def populate(res, db, user):
                                 reagents_signatures=rms['reagents'], products_signatures=rms['products'])
                 else:
                     db.Reaction(r, user, meta.pop('rxd'), special=meta,
-                                fingerprints=[r_fp], cgr_signatures=[rs], cgrs=[cgr], signatures=[ml_fear],
+                                fingerprints=[r_fp], cgr_signatures=[rs], cgrs=[cgr],
                                 reagents_signatures=rms['reagents'], products_signatures=rms['products'])
 
             else:
@@ -144,8 +144,7 @@ def calc(chunk, database, parser):
 
         rnum = next(raw_data)
         try:
-            ml_fear_str, mr = db.Reaction.get_signature(r, get_merged=True)
-            fear_str, cgr = db.Reaction.get_cgr_signature(mr, get_cgr=True)
+            cgrs, cgr = db.Reaction.get_cgr_signature(r, get_cgr=True)
         except Exception as e:
             print(e, file=stderr)
         else:
@@ -157,7 +156,7 @@ def calc(chunk, database, parser):
                     molecules.append((m, ms, rnum))
 
             lrms.append(rms)
-            cleaned.append((r, fear_str, ml_fear_str, rnum, cgr))
+            cleaned.append((r, cgrs, rnum, cgr))
             next(clean_data)
 
     if cleaned:
@@ -165,8 +164,8 @@ def calc(chunk, database, parser):
         mfps = db.Molecule.get_fingerprints([x for x, *_ in molecules], bit_array=False)
 
         mol_data = [(m, ms, mf, rnum) for (m, ms, rnum), mf in zip(molecules, mfps)]
-        rxn_data = [(r, rs, ml_fear, rnum, cgr, r_fp, rms, data_parser.parse(r['meta'])) for
-                    (r, rs, ml_fear, rnum, cgr), r_fp, rms in zip(cleaned, rfps, lrms)]
+        rxn_data = [(r, rs, rnum, cgr, r_fp, rms, data_parser.parse(r['meta'])) for
+                    (r, rs, rnum, cgr), r_fp, rms in zip(cleaned, rfps, lrms)]
 
         return next(raw_data), next(clean_data), mol_data, rxn_data
 

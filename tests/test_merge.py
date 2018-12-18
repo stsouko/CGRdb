@@ -21,7 +21,7 @@
 #
 import pytest
 from pony.orm import db_session, count
-from CGRdb.tests.preparer import DBPrepare
+from tests.preparer import DBPrepare
 from .config import bromnitrobenzene, non_existent_nbb, wrong_map_nbb, exist_nbb, nitrobrombenzene, user
 from CGRtools.files.SDFrw import SDFread
 

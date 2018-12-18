@@ -45,7 +45,7 @@ def mixin_factory(db):
             right_structures = list(self._structures)
             left_structures = list(in_db._structures)
 
-            mapping = self.match_structures(in_db.structure_raw, structure)
+            mapping = in_db.structure_raw.get_mapping(structure)
             if any(k != v for k, v in mapping.items()):  # if mapping different
                 for ms in left_structures:  # update structures mapping in db
                     ms.data = ms.structure.remap(mapping).pickle()
@@ -148,43 +148,38 @@ def mixin_factory(db):
         @staticmethod
         def __create_mixed_reactions_indexes(combinations, reactions_reagents_len, exists_cgr_signatures):
             for r, combos in combinations.items():
-                combos, signatures, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos,
-                                                                                          reactions_reagents_len[r])
-                clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
-                for cc, s, cs, f in zip(combos, signatures, cgr_signatures, fingerprints):
+                combos, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos, reactions_reagents_len[r])
+                clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], []
+                for cc, s, cs, f in zip(combos, cgr_signatures, fingerprints):
                     if cs not in exists_cgr_signatures:
-                        clean_signatures.append(s)
                         clean_cgr_signatures.append(cs)
                         clean_fingerprints.append(f)
                         clean_combinations.append(cc)
-                r._create_reaction_indexes(clean_combinations, clean_fingerprints, clean_cgr_signatures,
-                                           clean_signatures)
+                r._create_reaction_indexes(clean_combinations, clean_fingerprints, clean_cgr_signatures)
 
         @staticmethod
         def __create_reactions_indexes(combinations, reactions_reagents_len, exists_cgr_signatures):
             exists_cgr_signatures_set = set(exists_cgr_signatures)
             doubles = {}
             for r, combos in combinations.items():
-                combos, signatures, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos,
-                                                                                          reactions_reagents_len[r])
+                combos, cgr_signatures, fingerprints = r._prepare_reaction_sf(combos, reactions_reagents_len[r])
                 d = exists_cgr_signatures_set.intersection(cgr_signatures)
                 if d:
                     for x in d:
                         left = exists_cgr_signatures[x]
                         if left not in doubles:
                             doubles[left] = r
-                    clean_signatures, clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], [], []
-                    for cc, s, cs, f in zip(combos, signatures, cgr_signatures, fingerprints):
+                    clean_cgr_signatures, clean_fingerprints, clean_combinations = [], [], []
+                    for cc, s, cs, f in zip(combos, cgr_signatures, fingerprints):
                         if cs not in d:
-                            clean_signatures.append(s)
                             clean_cgr_signatures.append(cs)
                             clean_fingerprints.append(f)
                             clean_combinations.append(cc)
                     if not clean_combinations:
                         continue
-                    combos, cgr_signatures, signatures = clean_combinations, clean_cgr_signatures, clean_signatures
+                    combos, cgr_signatures = clean_combinations, clean_cgr_signatures
                     fingerprints = clean_fingerprints
-                r._create_reaction_indexes(combos, fingerprints, cgr_signatures, signatures)
+                r._create_reaction_indexes(combos, fingerprints, cgr_signatures)
             return doubles
 
     return MergeMolecules

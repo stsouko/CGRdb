@@ -21,7 +21,7 @@
 #
 from hashlib import md5
 from bitstring import BitArray
-from CGRtools.containers import ReactionContainer, MergedReaction
+from CGRtools.containers import ReactionContainer
 from CIMtools.preprocessing import Fragmentor
 from pandas import DataFrame
 
@@ -124,7 +124,7 @@ def reaction_mixin_factory(fragmentor_version, fragment_type, fragment_min, frag
     class FingerprintsReaction(Fingerprints):
         @classmethod
         def _get_descriptors(cls, structures):
-            cgrs = [cls.get_cgr(x) if isinstance(x, (ReactionContainer, MergedReaction)) else x for x in structures]
+            cgrs = [cls.get_cgr(x) if isinstance(x, ReactionContainer) else x for x in structures]
             try:
                 f = cls.__fragmentor.fit_transform(cgrs)
             except:
