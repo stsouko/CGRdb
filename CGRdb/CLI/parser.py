@@ -23,20 +23,6 @@ from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
 from importlib.util import find_spec
 from .main_create import create_core
 from .main_init import init_core
-from .main_populate import populate_core
-from ..version import version
-
-
-def populate(subparsers):
-    parser = subparsers.add_parser('populate', help='fill reaction databases',
-                                   formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--input', '-i', default='input.rdf', type=FileType(), help='RDF inputfile')
-    parser.add_argument('--parser', '-p', default='none', choices=['reaxys', 'none'], type=str, help='Data Format')
-    parser.add_argument('--chunk', '-c', default=1000, type=int, help='Chunks size')
-    parser.add_argument('--n_jobs', '-n', default=4, type=int, help='Parallel jobs')
-    parser.add_argument('--user', '-u', default=1, type=int, help='User id')
-    parser.add_argument("--database", '-db', required=True, help='Database name for populate')
-    parser.set_defaults(func=populate_core)
 
 
 def init_db(subparsers):
@@ -47,7 +33,6 @@ def init_db(subparsers):
     parser.add_argument('--host', '-H', default='localhost', help='host name')
     parser.add_argument('--port', '-P', default=5432, help='database port')
     parser.add_argument('--base', '-b', default='postgres', help='database name')
-    parser.add_argument('--name', '-n', default='public', help='schema name')
     parser.set_defaults(func=init_core)
 
 
@@ -66,11 +51,9 @@ def create_db(subparsers):
 
 def argparser():
     parser = ArgumentParser(description="CGRdb", epilog="(c) Dr. Ramil Nugmanov", prog='cgrdb')
-    parser.add_argument("--version", "-v", action="version", version=version(), default=False)
     subparsers = parser.add_subparsers(title='subcommands', description='available utilities')
 
     create_db(subparsers)
-    populate(subparsers)
     init_db(subparsers)
 
     if find_spec('argcomplete'):

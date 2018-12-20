@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -18,12 +18,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from LazyPony import LazyEntityMeta
-from pony.orm import Database
-
-
-def init_core(args):
-    db = Database()
-    LazyEntityMeta.attach(db, database='CGRdb_config')
-    db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
-    db.generate_mapping(create_tables=True)
+from .config import *
+from .data import *
+from .molecule import *
+from .reaction import *
+from .user import *

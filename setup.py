@@ -23,8 +23,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-version = ''
-major_version = '.'.join(version.split('.')[:-1])
+version = '3.0.0'
 
 
 setup(
@@ -37,7 +36,7 @@ setup(
     author_email='stsouko@live.ru',
     python_requires='>=3.7.0',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=3.0.5,<3.1', 'CIMtools>=3.0.4,<3.1', 'bitstring', 'pony'],
+    install_requires=['CGRtools>=3.0.5,<3.1', 'CIMtools>=3.0.4,<3.1', 'LazyPony>=0.1.0,<0.2', 'bitstring', 'pony'],
     extras_require={'postgres':  ['psycopg2-binary'],
                     'postgres_cffi':  ['cffi', 'psycopg2cffi'],
                     'autocomplete': ['argcomplete']},

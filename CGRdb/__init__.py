@@ -18,12 +18,18 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from LazyPony import LazyEntityMeta
 from os import getenv
 from pathlib import Path
-from pony.orm import db_session
+from pkg_resources import get_distribution
+from pony.orm import db_session, Database
 from sys import path
-from .models import load_tables, load_config
-from .version import major_version
+from .database import *
+
+
+#major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
+major_version = '3.0'
+
 
 env = getenv('CGR_DB')
 if env:
@@ -62,12 +68,29 @@ class Loader:
         if workpath is None:
             workpath = WORKPATH
 
+        db_config = Database()
+        LazyEntityMeta.attach(db_config, database='CGRdb_config')
+        db_config.bind('postgres', user=user, password=password, host=host, database=database, port=port)
+        db_config.generate_mapping()
+
         self.__schemas = {}
-        config = load_config()(user=user, password=password, host=host, database=database, port=port).Config
+
         with db_session:
-            for c in config.select(lambda x: x.version == major_version()):
-                self.__schemas[c.name] = load_tables(c.name, workpath=workpath, **c.config)\
-                    (user=user, password=password, host=host, database=database, port=port)
+            config = db_config.Config.select(lambda x: x.version == major_version)[:]
+
+        for c in config:
+            db = Database()
+            LazyEntityMeta.attach(db, c.name, 'CGRdb')
+
+            db.Molecule._fragmentor_workpath = db.Reaction._fragmentor_workpath = workpath
+            for k, v in c.config.get('molecule', {}).items():
+                setattr(db.Molecule, f'_{k}', v)
+            for k, v in c.config.get('reaction', {}).items():
+                setattr(db.Reaction, f'_{k}', v)
+
+            db.bind('postgres', user=user, password=password, host=host, database=database, port=port)
+            db.generate_mapping()
+            self.__schemas[c.name] = db
 
     def __iter__(self):
         return iter(self.__schemas)

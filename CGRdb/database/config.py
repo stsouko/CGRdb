@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -18,21 +18,16 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from LazyPony import LazyEntityMeta
+from pony.orm import PrimaryKey, Required, Json
 
 
-def mixin_factory(user_entity):
-    class User:
-        @property
-        def user(self):
-            return user_entity[self.user_id]
-    return User
+class Config(metaclass=LazyEntityMeta, database='CGRdb_config'):
+    _table_ = 'cgr_db_config'
+    id = PrimaryKey(int, auto=True)
+    name = Required(str)
+    config = Required(Json, index=False, optimistic=False)
+    version = Required(str)
 
 
-class UserADHOCMeta(type):
-    def __getitem__(cls, item):
-        return cls(item)
-
-
-class UserADHOC(metaclass=UserADHOCMeta):
-    def __init__(self, uid):
-        self.id = uid
+__all__ = ['Config']
