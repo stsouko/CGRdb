@@ -86,7 +86,6 @@ class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database=
     id = PrimaryKey(int, auto=True)
     user = DoubleLink(Required('User', reverse='molecule_structures'), Set('MoleculeStructure'))
     molecule = Required('Molecule')
-    reaction_indexes = Set('ReactionIndex')
     date = Required(datetime, default=datetime.utcnow)
     last = Required(bool, default=True)
     data = Required(Json, optimistic=False)

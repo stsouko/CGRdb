@@ -56,12 +56,9 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
                     mapping = ms.structure.get_mapping(s)
                     self._database_.MoleculeReaction(reaction=self, molecule=ms.molecule, is_product=is_p,
                                                      mapping=mapping)
-
-                    tmp = [(s, ms)]
-                    if ms.molecule in m2ms_mapping:
-                        tmp.extend((x.structure.remap(mapping, copy=True), x) for x in m2ms_mapping[ms.molecule])
-                    combinations.append(tmp)
-                else:
+                    # first MoleculeStructure always last
+                    combinations.append(m2ms_mapping[ms.molecule])
+                else:  # New molecule
                     if sig not in duplicates:
                         m = duplicates[sig] = self._database_.Molecule(s, user)
                         mapping = None
@@ -70,18 +67,20 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
                         mapping = m.structure.get_mapping(s)
 
                     self._database_.MoleculeReaction(reaction=self, molecule=m, is_product=is_p, mapping=mapping)
-                    combinations.append([(s, m.last_edition)])
+                    combinations.append([s])
 
         reagents_len = len(structure.reagents)
         combinations = list(product(*combinations))
         if len(combinations) == 1:  # optimize
             structures = [structure]
+            last_list = [True]
         else:
-            structures = [ReactionContainer(reagents=[x for x, _ in x[:reagents_len]],
-                                            products=[x for x, _ in x[reagents_len:]]) for x in combinations]
+            structures = [ReactionContainer(reagents=x[:reagents_len], products=x[reagents_len:]) for x in combinations]
+            last_list = [False] * len(combinations)
+            last_list[0] = True
 
-        for s, mss in zip(structures, ((x for _, x in c) for c in combinations)):
-            self._database_.ReactionIndex(self, mss, s)
+        for s, last in zip(structures, last_list):
+            self._database_.ReactionIndex(self, s, last)
 
         if special:
             self.special = special
@@ -91,17 +90,16 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         # preload molecules entities. pony caching it.
         select(x.molecule for x in cls._database_.MoleculeStructure if x.signature in signatures)[:]
         # preload all molecules structures entities
-        m2ms_mapping, signature2ms_mapping = defaultdict(list), {}
+        m2ms_mapping, sig2ms_mapping = defaultdict(list), {}
         for ms in select(x for x in cls._database_.MoleculeStructure if x.molecule in
                          select(y.molecule for y in cls._database_.MoleculeStructure if y.signature in signatures)):
             # NEED PR
             # select(y for x in db.MoleculeStructure if x.signature in signatures_set
             #        for y in db.MoleculeStructure if y.molecule == x.molecule)
             if ms.signature in signatures:
-                signature2ms_mapping[ms.signature] = ms
-            else:
-                m2ms_mapping[ms.molecule].append(ms)
-        return dict(m2ms_mapping), signature2ms_mapping
+                sig2ms_mapping[ms.signature] = ms
+            m2ms_mapping[ms.molecule].append(ms)
+        return {k: sorted(v, key=lambda x: ms.last, reverse=True) for k, v in m2ms_mapping.items()}, sig2ms_mapping
 
     def __str__(self):
         """
@@ -199,23 +197,13 @@ class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
 class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
-    structures = Set('MoleculeStructure', table='ReactionIndex_MoleculeStructure')
     signature = Required(bytes, unique=True)
+    last = Required(bool)
     bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
 
-    def __init__(self, reaction, structures, reaction_container):
-        cgr = ~reaction_container
-        super().__init__(reaction=reaction, signature=bytes(cgr),
-                         bit_array=self.get_fingerprint(cgr))
-        for m in set(structures):
-            self.structures.add(m)
-
-    @classmethod
-    def get_signature(cls, structure):
-        """
-        get CGR signature of reaction. SUGAR
-        """
-        return bytes(~structure)
+    def __init__(self, reaction, structure, last):
+        cgr = ~structure
+        super().__init__(reaction=reaction, signature=bytes(cgr), last=last, bit_array=self.get_fingerprint(cgr))
 
 
 class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
