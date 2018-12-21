@@ -20,122 +20,79 @@
 #  MA 02110-1301, USA.
 #
 from hashlib import md5
-from bitstring import BitArray
 from CGRtools.containers import ReactionContainer
+from CIMtools.exceptions import ConfigurationError
 from CIMtools.preprocessing import Fragmentor
+from numpy import zeros
 from pandas import DataFrame
 
 
-def _mixin_factory(fp_size, fp_count, fp_active_bits):
-    fp_count_i = fp_count + 1
+class Fingerprint:
+    @property
+    def fingerprint(self):
+        if self.__cached_fingerprint is None:
+            self.__cached_fingerprint = fp = zeros(2 ** self._fp_size, dtype=bool)
+            fp[self.bit_array] = True
+        return self.__cached_fingerprint
 
-    class Fingerprints:
-        @classmethod
-        def descriptors_to_fingerprints(cls, descriptors, bit_array=True):
-            return cls.__get_fingerprints(descriptors, bit_array=bit_array)
+    @classmethod
+    def get_fingerprint(cls, structure):
+        df = cls._get_fragments(structure)
+        mask = 2 ** cls._fp_size - 1
+        fp_count = cls._fp_count
+        fp_active = cls._fp_active * 2
+        bits_map = {}
+        for f in df.columns:
+            prev = []
+            for i in range(1, fp_count + 1):
+                bs = md5(f'{i}_{f}'.encode()).digest()
+                bits_map[(f, i)] = prev = [int.from_bytes(bs[r: r + 2], 'big') & mask
+                                           for r in range(0, fp_active, 2)] + prev
 
-        @classmethod
-        def get_fingerprints(cls, structures, bit_array=True):
-            f = cls._get_descriptors(structures)
-            return cls.descriptors_to_fingerprints(f, bit_array=bit_array)
+        active_bits = set()
+        for k, v in df.loc[0].items():
+            if v:
+                active_bits.update(bits_map[(k, v if v < fp_count else fp_count)])
+        return active_bits
 
-        @classmethod
-        def get_fingerprint(cls, structures, bit_array=True):
-            return cls.get_fingerprints([structures], bit_array)[0]
-
-        @staticmethod
-        def __get_fingerprints(df, bit_array=True):
-            bits_map = {}
-            for f in df.columns:
-                prev = []
-                for i in range(1, fp_count_i):
-                    b = BitArray(md5(('{}_{}'.format(i, f)).encode()).digest())
-                    bits_map[(f, i)] = prev = [b[r * fp_size: (r + 1) * fp_size].uint for r in
-                                               range(fp_active_bits)] + prev
-
-            result = []
-            for _, s in df.iterrows():
-                active_bits = set()
-                for k, v in s.items():
-                    if v:
-                        active_bits.update(bits_map[(k, v if v < fp_count_i else fp_count)])
-
-                if bit_array:
-                    fp = BitArray(2 ** fp_size)
-                    fp.set(True, active_bits)
-                else:
-                    fp = active_bits
-                result.append(fp)
-
-            return result
-
-        __cached_fingerprint = None
-
-    class FingerprintsIndex:
-        @staticmethod
-        def get_bits_list(fingerprint):
-            return list(fingerprint.findall([1]) if isinstance(fingerprint, BitArray) else fingerprint)
-
-        @property
-        def fingerprint(self):
-            if self.__cached_fingerprint is None:
-                self.__cached_fingerprint = self.__list2bit_array(self.bit_array)
-            return self.__cached_fingerprint
-
-        @fingerprint.setter
-        def fingerprint(self, fingerprint):
-            self.bit_array = self.get_bits_list(fingerprint)
-            self._flush_fingerprints_cache()
-
-        def _flush_fingerprints_cache(self):
-            self.__cached_fingerprint = None
-
-        @staticmethod
-        def __list2bit_array(bits):
-            fp = BitArray(2 ** fp_size)
-            fp.set(True, bits)
-            return fp
-
-        __cached_fingerprint = None
-
-    return Fingerprints, FingerprintsIndex
+    _fp_size = 12
+    _fp_count = 4
+    _fp_active = 2
+    _fragmentor_version = '2017.x'
+    _fragmentor_workpath = '/tmp'
+    __cached_fingerprint = None
 
 
-def molecule_mixin_factory(fragmentor_version, fragment_type, fragment_min, fragment_max, fp_size, fp_active_bits,
-                           fp_count, workpath):
-    Fingerprints, FingerprintsIndex = _mixin_factory(fp_size, fp_count, fp_active_bits)
+class FingerprintMolecule(Fingerprint):
+    @classmethod
+    def _get_fragments(cls, structure):
+        return Fragmentor(version=cls._fragmentor_version, header=False, fragment_type=cls._fragment_type,
+                          workpath=cls._fragmentor_workpath, min_length=cls._fragment_min, max_length=cls._fragment_max,
+                          useformalcharge=True).transform([structure])
 
-    class FingerprintsMolecule(Fingerprints):
-        @classmethod
-        def _get_descriptors(cls, structures):
-            return cls.__fragmentor.fit_transform(structures)
-
-        __fragmentor = Fragmentor(version=fragmentor_version, header=False, fragment_type=fragment_type,
-                                  workpath=workpath, min_length=fragment_min, max_length=fragment_max,
-                                  useformalcharge=True)
-
-    return FingerprintsMolecule, FingerprintsIndex
+    _fragment_type = 3
+    _fragment_min = 2
+    _fragment_max = 5
 
 
-def reaction_mixin_factory(fragmentor_version, fragment_type, fragment_min, fragment_max, fragment_dynbond, fp_size,
-                           fp_active_bits, fp_count, workpath):
-    Fingerprints, FingerprintsIndex = _mixin_factory(fp_size, fp_count, fp_active_bits)
+class FingerprintReaction(Fingerprint):
+    @classmethod
+    def _get_fragments(cls, structure):
+        if isinstance(structure, ReactionContainer):
+            structure = ~structure
+        try:
+            f = Fragmentor(version=cls._fragmentor_version, header=False, fragment_type=cls._fragment_type,
+                           workpath=cls._fragmentor_workpath, min_length=cls._fragment_min,
+                           max_length=cls._fragment_max, cgr_dynbonds=cls._fragment_dynbond,
+                           useformalcharge=True).transform([structure])
+        except ConfigurationError:
+            f = DataFrame(index=[0])
+        return f
 
-    class FingerprintsReaction(Fingerprints):
-        @classmethod
-        def _get_descriptors(cls, structures):
-            cgrs = [cls.get_cgr(x) if isinstance(x, ReactionContainer) else x for x in structures]
-            try:
-                f = cls.__fragmentor.fit_transform(cgrs)
-            except:
-                f = DataFrame(index=range(len(structures)))
-            return f
-
-        __fragmentor = Fragmentor(version=fragmentor_version, header=False, fragment_type=fragment_type,
-                                  min_length=fragment_min, max_length=fragment_max, workpath=workpath,
-                                  cgr_dynbonds=fragment_dynbond, useformalcharge=True)
-
-    return FingerprintsReaction, FingerprintsIndex
+    _fragment_type = 3
+    _fragment_min = 2
+    _fragment_max = 5
+    _fragment_dynbond = 1
 
 
-__all__ = [molecule_mixin_factory.__name__, reaction_mixin_factory.__name__]
+__all__ = ['FingerprintMolecule', 'FingerprintReaction']

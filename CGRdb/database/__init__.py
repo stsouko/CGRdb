@@ -18,21 +18,8 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-
-
-def mixin_factory(user_entity):
-    class User:
-        @property
-        def user(self):
-            return user_entity[self.user_id]
-    return User
-
-
-class UserADHOCMeta(type):
-    def __getitem__(cls, item):
-        return cls(item)
-
-
-class UserADHOC(metaclass=UserADHOCMeta):
-    def __init__(self, uid):
-        self.id = uid
+from .config import *
+from .data import *
+from .molecule import *
+from .reaction import *
+from .user import *

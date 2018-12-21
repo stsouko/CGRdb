@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -18,12 +18,16 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from LazyPony import LazyEntityMeta
+from pony.orm import PrimaryKey, Required, Json
 
 
-def version():
-    return '1.4.2'
+class Config(metaclass=LazyEntityMeta, database='CGRdb_config'):
+    _table_ = 'cgr_db_config'
+    id = PrimaryKey(int, auto=True)
+    name = Required(str)
+    config = Required(Json, index=False, optimistic=False)
+    version = Required(str)
 
 
-def major_version():
-    v = version().split('.')
-    return '.'.join(v[:-1])
+__all__ = ['Config']

@@ -22,211 +22,199 @@
 from collections import defaultdict
 from operator import itemgetter
 from pony.orm import select, left_join
-from .molecule_cache import QueryCache
+from ..utils import QueryCache
 
 
-def mixin_factory(db, schema):
-    class Search:
-        @classmethod
-        def structure_exists(cls, structure):
-            return db.MoleculeStructure.exists(signature=structure if isinstance(structure, bytes) else
-                                               cls.get_signature(structure))
+class SearchMolecule:
+    @classmethod
+    def structure_exists(cls, structure):
+        return cls._database_.MoleculeStructure.exists(signature=bytes(structure))
 
-        @classmethod
-        def find_structure(cls, structure):
-            ms = db.MoleculeStructure.get(signature=structure if isinstance(structure, bytes) else
-                                          cls.get_signature(structure))
-            if ms:
-                molecule = ms.molecule
-                if ms.last:  # save if structure is canonical
-                    molecule.last_edition = ms
-                molecule.raw_edition = ms
-                return molecule
+    @classmethod
+    def find_structure(cls, structure):
+        ms = cls._database_.MoleculeStructure.get(signature=bytes(structure))
+        if ms:
+            molecule = ms.molecule
+            if ms.last:  # save if structure is canonical
+                molecule.last_edition = ms
+            molecule.raw_edition = ms
+            return molecule
 
-        @classmethod
-        def find_substructures(cls, structure, number=10):
-            """
-            graph substructure search
-            :param structure: CGRtools MoleculeContainer
-            :param number: top limit of returned results. not guarantee returning of all available data.
-            set bigger value for this. negative value returns generator for all data in db.
-            :return: list of tuples of Molecule entities and Tanimoto indexes
-            """
-            q = ((x, y) for x, y in cls._get_molecules(structure, 'substructure', number, set_raw=True)
-                 if structure < x.structure_raw)
+    @classmethod
+    def find_substructures(cls, structure, number=10):
+        """
+        graph substructure search
+        :param structure: CGRtools MoleculeContainer
+        :param number: top limit of returned results. not guarantee returning of all available data.
+        set bigger value for this. negative value returns generator for all data in db.
+        :return: list of tuples of Molecule entities and Tanimoto indexes
+        """
+        q = ((x, y) for x, y in cls._get_molecules(structure, 'substructure', number, set_raw=True)
+             if structure < x.structure_raw)
 
-            return q
+        return q
 
-        @classmethod
-        def find_similar(cls, structure, number=10):
-            """
-            graph similar search
-            :param structure: CGRtools MoleculeContainer
-            :param number: top limit of returned results. not guarantee returning of all available data.
-            negative value returns generator for all data in db.
-            :return: list of tuples of Molecule entities and Tanimoto indexes
-            """
-            q = cls._get_molecules(structure, 'similar', number)
-            return q
+    @classmethod
+    def find_similar(cls, structure, number=10):
+        """
+        graph similar search
+        :param structure: CGRtools MoleculeContainer
+        :param number: top limit of returned results. not guarantee returning of all available data.
+        negative value returns generator for all data in db.
+        :return: list of tuples of Molecule entities and Tanimoto indexes
+        """
+        q = cls._get_molecules(structure, 'similar', number)
+        return q
 
-        @classmethod
-        def find_reaction_by_reagent(cls, structure, number=10):
-            return cls.find_reaction_by_molecule(structure, number, product=False)
+    @classmethod
+    def find_reaction_by_reagent(cls, structure, number=10):
+        return cls.find_reaction_by_molecule(structure, number, product=False)
 
-        @classmethod
-        def find_reaction_by_product(cls, structure, number=10):
-            return cls.find_reaction_by_molecule(structure, number, product=True)
+    @classmethod
+    def find_reaction_by_product(cls, structure, number=10):
+        return cls.find_reaction_by_molecule(structure, number, product=True)
 
-        @classmethod
-        def find_reaction_by_similar_reagent(cls, structure, number=10):
-            return cls.find_reaction_by_similar_molecule(structure, number, product=False)
+    @classmethod
+    def find_reaction_by_similar_reagent(cls, structure, number=10):
+        return cls.find_reaction_by_similar_molecule(structure, number, product=False)
 
-        @classmethod
-        def find_reaction_by_similar_product(cls, structure, number=10):
-            return cls.find_reaction_by_similar_molecule(structure, number, product=True)
+    @classmethod
+    def find_reaction_by_similar_product(cls, structure, number=10):
+        return cls.find_reaction_by_similar_molecule(structure, number, product=True)
 
-        @classmethod
-        def find_reaction_by_substructure_reagent(cls, structure, number=10):
-            return cls.find_reaction_by_substructure_molecule(structure, number, product=False)
+    @classmethod
+    def find_reaction_by_substructure_reagent(cls, structure, number=10):
+        return cls.find_reaction_by_substructure_molecule(structure, number, product=False)
 
-        @classmethod
-        def find_reaction_by_substructure_product(cls, structure, number=10):
-            return cls.find_reaction_by_substructure_molecule(structure, number, product=True)
+    @classmethod
+    def find_reaction_by_substructure_product(cls, structure, number=10):
+        return cls.find_reaction_by_substructure_molecule(structure, number, product=True)
 
-        @classmethod
-        def find_reaction_by_molecule(cls, structure, number=10, *, product=None):
-            """
-            reaction search for molecule
-            it is also possible to search reactions with molecule in proper role: reagent/product
+    @classmethod
+    def find_reaction_by_molecule(cls, structure, number=10, *, product=None):
+        """
+        reaction search for molecule
+        it is also possible to search reactions with molecule in proper role: reagent/product
 
-            :param structure: CGRtools MoleculeContainer
-            :param number: top limit number of returned reactions
-            :param product: boolean. if True, find reactions with current molecule in products
-            :return: list of Reaction entities
-            """
-            molecule = cls.find_structure(structure)
-            if molecule:
-                q = cls._get_reactions(molecule, number, product, True)
-                if number < 0:
-                    return q
-                return list(q)
-
-        @classmethod
-        def find_reaction_by_similar_molecule(cls, structure, number=10, *, product=None):
-            """
-            search for reactions with similar molecule structure
-            molecule may be a reagent/product or whatever
-
-            :param structure: CGRtools MoleculeContainer
-            :param number: top limit of returned results. not guarantee returning of all available data.
-            negative value returns generator for all data in db.
-            :param product: boolean. if True, find reactions with current molecule in products
-            :return: list of tuples of Reaction entities and Tanimoto indexes
-            """
-            q = ((r, t) for m, t in cls.find_similar(structure, number) for r in cls._get_reactions(m, number, product))
+        :param structure: CGRtools MoleculeContainer
+        :param number: top limit number of returned reactions
+        :param product: boolean. if True, find reactions with current molecule in products
+        :return: list of Reaction entities
+        """
+        molecule = cls.find_structure(structure)
+        if molecule:
+            q = cls._get_reactions(molecule, number, product, True)
             if number < 0:
                 return q
-            return sorted(q, reverse=True, key=itemgetter(1))
+            return list(q)
 
-        @classmethod
-        def find_reaction_by_substructure_molecule(cls, structure, number=10, *, product=None):
-            """
-            search for reactions with supergraph of current molecule structure
-            molecule may be a reagent/product or whatever
+    @classmethod
+    def find_reaction_by_similar_molecule(cls, structure, number=10, *, product=None):
+        """
+        search for reactions with similar molecule structure
+        molecule may be a reagent/product or whatever
 
-            :param structure: CGRtools MoleculeContainer
-            :param number: top limit of returned results. not guarantee returning of all available data.
-            set bigger value for this. negative value returns generator for all data in db.
-            :param product: boolean. if True, find reactions with current molecule in products
-            :return: list of tuples of Reaction entities and Tanimoto indexes
-            """
-            q = ((r, t) for m, t in cls.find_substructures(structure, number)
-                 for r in cls._get_reactions(m, number, product, True))
-            if number < 0:
-                return q
-            return sorted(q, reverse=True, key=itemgetter(1))
+        :param structure: CGRtools MoleculeContainer
+        :param number: top limit of returned results. not guarantee returning of all available data.
+        negative value returns generator for all data in db.
+        :param product: boolean. if True, find reactions with current molecule in products
+        :return: list of tuples of Reaction entities and Tanimoto indexes
+        """
+        q = ((r, t) for m, t in cls.find_similar(structure, number) for r in cls._get_reactions(m, number, product))
+        if number < 0:
+            return q
+        return sorted(q, reverse=True, key=itemgetter(1))
 
-        @classmethod
-        def _get_reactions(cls, molecule, number, product=None, set_raw=False):
-            q = left_join(x.reaction for x in db.MoleculeReaction if x.molecule == molecule).order_by(lambda x: x.id)
-            if product is not None:
-                q = q.where(lambda x: x.is_product == product)
+    @classmethod
+    def find_reaction_by_substructure_molecule(cls, structure, number=10, *, product=None):
+        """
+        search for reactions with supergraph of current molecule structure
+        molecule may be a reagent/product or whatever
 
-            load = 100 if number < 0 or number > 100 else number
-            page = 1
-            while number:
-                reactions = q.page(page, load)
-                if not reactions:
-                    break  # no more data available
+        :param structure: CGRtools MoleculeContainer
+        :param number: top limit of returned results. not guarantee returning of all available data.
+        set bigger value for this. negative value returns generator for all data in db.
+        :param product: boolean. if True, find reactions with current molecule in products
+        :return: list of tuples of Reaction entities and Tanimoto indexes
+        """
+        q = ((r, t) for m, t in cls.find_substructures(structure, number)
+             for r in cls._get_reactions(m, number, product, True))
+        if number < 0:
+            return q
+        return sorted(q, reverse=True, key=itemgetter(1))
 
-                page += 1
-                if number > 0:
-                    l_reactions = len(reactions)
-                    if l_reactions > number:
-                        reactions = reactions[:number]
-                        number = 0
-                    else:
-                        number -= l_reactions
+    @classmethod
+    def _get_reactions(cls, molecule, number, product=None, set_raw=False):
+        q = left_join(x.reaction for x in db.MoleculeReaction if x.molecule == molecule).order_by(lambda x: x.id)
+        if product is not None:
+            q = q.where(lambda x: x.is_product == product)
 
-                if set_raw:
-                    mrs = db.Reaction._get_molecule_reaction_entities(reactions)
-                    mss = {x.molecule.id: x for x in db.Reaction._get_last_molecule_structure_entities(reactions)}
-                    mis = {mi: [ms] if mi != molecule.id else [molecule.raw_edition] for mi, ms in mss.items()}
+        load = 100 if number < 0 or number > 100 else number
+        page = 1
+        while number:
+            reactions = q.page(page, load)
+            if not reactions:
+                break  # no more data available
 
-                    rsr = defaultdict(list)
-                    for mr in mrs:
-                        mi = mr.molecule.id
-                        rsr[mr.reaction.id].append(mss[mi].id if mi != molecule.id else molecule.raw_edition.id)
-
-                    db.Reaction._load_structures(reactions, mss, mrs)
-                    db.Reaction._load_structures_raw(reactions, mis, rsr, mrs)
+            page += 1
+            if number > 0:
+                l_reactions = len(reactions)
+                if l_reactions > number:
+                    reactions = reactions[:number]
+                    number = 0
                 else:
-                    db.Reaction._load_structures(reactions)
+                    number -= l_reactions
 
-                yield from reactions
+            if set_raw:
+                mrs = db.Reaction._get_molecule_reaction_entities(reactions)
+                mss = {x.molecule.id: x for x in db.Reaction._get_last_molecule_structure_entities(reactions)}
+                mis = {mi: [ms] if mi != molecule.id else [molecule.raw_edition] for mi, ms in mss.items()}
 
-        @classmethod
-        def _get_molecules(cls, structure, operator, number, set_raw=False, page=1):
-            """
-            find Molecule entities from MoleculeStructure entities.
-            set to Molecule entities raw_structure property's found MoleculeStructure entities
-            and preload canonical MoleculeStructure entities
-            :param structure: query structure
-            :param operator: raw sql operator (similar or substructure)
-            :param number: number of results. if negative - return all data
-            :param page: starting page in pagination
-            :return: Molecule entities
-            """
-            molecule_cache = cls.__substructure_cache if operator == 'substructure' else cls.__similarity_cache
-            start = (page - 1) * number
-            end = (page - 1) * number + number
-            se = slice(start, end)
-            sig = cls.get_signature(structure)
-            if sig in molecule_cache:
-                mis, sis, sts = molecule_cache[sig]
-                if number >= 0:
-                    mis = mis[se]
-                    sis = sis[se]
-                    sts = sts[se]
+                rsr = defaultdict(list)
+                for mr in mrs:
+                    mi = mr.molecule.id
+                    rsr[mr.reaction.id].append(mss[mi].id if mi != molecule.id else molecule.raw_edition.id)
+
+                db.Reaction._load_structures(reactions, mss, mrs)
+                db.Reaction._load_structures_raw(reactions, mis, rsr, mrs)
             else:
+                db.Reaction._load_structures(reactions)
+
+            yield from reactions
+
+    @classmethod
+    def _get_molecules(cls, structure, operator, number, set_raw=False, page=1):
+        """
+        find Molecule entities from MoleculeStructure entities.
+        set to Molecule entities raw_structure property's found MoleculeStructure entities
+        and preload canonical MoleculeStructure entities
+        :param structure: query structure
+        :param operator: raw sql operator (similar or substructure)
+        :param number: number of results. if negative - return all data
+        :param page: starting page in pagination
+        :return: Molecule entities
+        """
+        molecule_cache = cls.__substructure_cache if operator == 'substructure' else cls.__similarity_cache
+        start = (page - 1) * number
+        end = (page - 1) * number + number
+        se = slice(start, end)
+        sig = cls.get_signature(structure)
+        if sig in molecule_cache:
+            mis, sis, sts = molecule_cache[sig]
+            if number >= 0:
+                mis = mis[se]
+                sis = sis[se]
+                sts = sts[se]
+        else:
+            if not db.MoleculeSearchCache.exists(signature=sig, operator=operator):
+                bit_set = cls.get_fingerprint(structure, bit_array=False)
+                q = db.select(f"SELECT * FROM {schema}.get_molecules_func_arr('{bit_set}', '{operator}', $sig)")[0]
                 if not db.MoleculeSearchCache.exists(signature=sig, operator=operator):
-                    bit_set = cls.get_fingerprint(structure, bit_array=False)
-                    q = db.select(f"SELECT * FROM {schema}.get_molecules_func_arr('{bit_set}', '{operator}', $sig)")[0]
-                    if not db.MoleculeSearchCache.exists(signature=sig, operator=operator):
-                        mis, sis, sts = molecule_cache[sig] = q
-                        if number >= 0:
-                            mis = mis[se]
-                            sis = sis[se]
-                            sts = sts[se]
-                    else:
-                        if number >= 0:
-                            mis, sis, sts = select(
-                                (x.molecules[start:end], x.structures[start:end], x.tanimotos[start:end]) for x in
-                                db.MoleculeSearchCache if
-                                x.signature == sig and x.operator == operator).first()
-                        else:
-                            mis, sis, sts = select((x.molecules, x.structures, x.tanimotos) for x in db.MoleculeSearchCache if
-                                                   x.signature == sig and x.operator == operator).first()
+                    mis, sis, sts = molecule_cache[sig] = q
+                    if number >= 0:
+                        mis = mis[se]
+                        sis = sis[se]
+                        sts = sts[se]
                 else:
                     if number >= 0:
                         mis, sis, sts = select(
@@ -236,31 +224,38 @@ def mixin_factory(db, schema):
                     else:
                         mis, sis, sts = select((x.molecules, x.structures, x.tanimotos) for x in db.MoleculeSearchCache if
                                                x.signature == sig and x.operator == operator).first()
-            ms = {x.id: x for x in cls.select(lambda x: x.id in mis)}
-
-            if set_raw:
-                not_last = []
-                for x in db.MoleculeStructure.select(lambda x: x.id in sis):
-                    m = ms[x.molecule.id]
-                    m.raw_edition = x
-                    if x.last:
-                        m.last_edition = x
-                    else:
-                        not_last.append(m.id)
-
-                if not_last:
-                    for x in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
-                        ms[x.molecule.id].last_edition = x
             else:
-                for x in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.last):
+                if number >= 0:
+                    mis, sis, sts = select(
+                        (x.molecules[start:end], x.structures[start:end], x.tanimotos[start:end]) for x in
+                        db.MoleculeSearchCache if
+                        x.signature == sig and x.operator == operator).first()
+                else:
+                    mis, sis, sts = select((x.molecules, x.structures, x.tanimotos) for x in db.MoleculeSearchCache if
+                                           x.signature == sig and x.operator == operator).first()
+        ms = {x.id: x for x in cls.select(lambda x: x.id in mis)}
+
+        if set_raw:
+            not_last = []
+            for x in db.MoleculeStructure.select(lambda x: x.id in sis):
+                m = ms[x.molecule.id]
+                m.raw_edition = x
+                if x.last:
+                    m.last_edition = x
+                else:
+                    not_last.append(m.id)
+
+            if not_last:
+                for x in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
                     ms[x.molecule.id].last_edition = x
+        else:
+            for x in db.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.last):
+                ms[x.molecule.id].last_edition = x
 
-            yield from zip((ms[x] for x in mis), sts)
+        yield from zip((ms[x] for x in mis), sts)
 
-        __similarity_cache = QueryCache()
-        __substructure_cache = QueryCache()
-
-    return Search
+    __similarity_cache = QueryCache()
+    __substructure_cache = QueryCache()
 
 
-__all__ = [mixin_factory.__name__]
+__all__ = ['SearchMolecule']

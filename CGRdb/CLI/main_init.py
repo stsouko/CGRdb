@@ -18,19 +18,12 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from pony.orm import db_session, Database
+from LazyPony import LazyEntityMeta
+from pony.orm import Database
 
 
 def init_core(args):
     db = Database()
+    LazyEntityMeta.attach(db, database='CGRdb_config')
     db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
-
-    with db_session:
-        db.execute(f'CREATE TABLE IF NOT EXISTS {args.name}.cgr_db_config\n'
-                   '(\n'
-                   '    id serial PRIMARY KEY NOT NULL,\n'
-                   '    name text NOT NULL,\n'
-                   '    config json NOT NULL,\n'
-                   '    version text NOT NULL\n'
-                   ');\n'
-                   'CREATE UNIQUE INDEX IF NOT EXISTS cgr_db_config_name ON cgr_db_config (name);')
+    db.generate_mapping(create_tables=True)

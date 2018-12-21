@@ -19,28 +19,29 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRdb.version import version
 from pathlib import Path
 from setuptools import setup, find_packages
 
 
+version = '3.0.0'
+
+
 setup(
     name='CGRdb',
-    version=version(),
+    version=version,
     packages=find_packages(),
-    url='https://github.com/stsouko/predictor',
+    url='https://github.com/stsouko/CGRdb',
     license='AGPLv3',
     author='Dr. Ramil Nugmanov',
     author_email='stsouko@live.ru',
-    description='CGRdb',
+    python_requires='>=3.7.0',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=2.8.28,<2.9', 'CIMtools>=1.4.6,<1.5', 'bitstring', 'pony'],
-    extras_require={'postgres':  ['psycopg2'],
+    install_requires=['CGRtools>=3.0.5,<3.1', 'CIMtools>=3.0.4,<3.1', 'LazyPony>=0.1.0,<0.2', 'bitstring', 'pony'],
+    extras_require={'postgres':  ['psycopg2-binary'],
                     'postgres_cffi':  ['cffi', 'psycopg2cffi'],
                     'autocomplete': ['argcomplete']},
     long_description=(Path(__file__).parent / 'README.md').open().read(),
-    keywords='CGRdb database search similarity chemistry',
-    classifiers=['Environment :: Web Environment',
+    classifiers=['Environment :: Plugins',
                  'Intended Audience :: Science/Research',
                  'Intended Audience :: Developers',
                  'Topic :: Scientific/Engineering :: Chemistry',
@@ -52,7 +53,7 @@ setup(
                  'Programming Language :: Python :: 3.7',
                  ],
     command_options={'build_sphinx': {'project': ('setup.py', 'CGRdb'),
-                                      'version': ('setup.py', version()), 'source_dir': ('setup.py', 'doc'),
+                                      'version': ('setup.py', version), 'source_dir': ('setup.py', 'doc'),
                                       'build_dir':  ('setup.py', 'build/doc'),
                                       'all_files': ('setup.py', True),
                                       'copyright': ('setup.py', 'Dr. Ramil Nugmanov <stsouko@live.ru>')},
