@@ -22,10 +22,10 @@ from datetime import datetime
 from CGRtools.containers.common import BaseContainer
 from LazyPony import LazyEntityMeta, DoubleLink
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray, FloatArray
-from ..search import FingerprintMolecule
+from ..search import FingerprintMolecule, SearchMolecule
 
 
-class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
+class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     date = Required(datetime, default=datetime.utcnow)
     user = DoubleLink(Required('User', reverse='molecules'), Set('Molecule'))
@@ -108,9 +108,9 @@ class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database=
 class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
-    molecules = Required(IntArray)
-    structures = Required(IntArray)
-    tanimotos = Required(FloatArray)
+    molecules = Required(IntArray, optimistic=False, index=False)
+    structures = Required(IntArray, optimistic=False, index=False)
+    tanimotos = Required(FloatArray, optimistic=False, index=False)
     date = Required(datetime)
     operator = Required(str)
 

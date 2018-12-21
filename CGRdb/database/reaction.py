@@ -24,10 +24,10 @@ from datetime import datetime
 from itertools import product
 from LazyPony import LazyEntityMeta, DoubleLink
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray
-from ..search import FingerprintReaction
+from ..search import FingerprintReaction, SearchReaction
 
 
-class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
+class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     date = Required(datetime, default=datetime.utcnow)
     user = DoubleLink(Required('User', reverse='reactions'), Set('Reaction'))
@@ -209,9 +209,9 @@ class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGR
 class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
-    reactions = Required(IntArray)
-    reaction_indexes = Required(IntArray)
-    tanimotos = Required(FloatArray)
+    reactions = Required(IntArray, optimistic=False, index=False)
+    reaction_indexes = Required(IntArray, optimistic=False, index=False)
+    tanimotos = Required(FloatArray, optimistic=False, index=False)
     date = Required(datetime)
     operator = Required(str)
 

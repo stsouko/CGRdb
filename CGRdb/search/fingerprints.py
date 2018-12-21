@@ -37,11 +37,7 @@ class Fingerprint:
 
     @classmethod
     def get_fingerprint(cls, structure):
-        return cls.get_fingerprints([structure])[0]
-
-    @classmethod
-    def get_fingerprints(cls, structures):
-        df = cls._get_fragments(structures)
+        df = cls._get_fragments(structure)
         mask = 2 ** cls._fp_size - 1
         fp_count = cls._fp_count
         fp_active = cls._fp_active * 2
@@ -53,14 +49,11 @@ class Fingerprint:
                 bits_map[(f, i)] = prev = [int.from_bytes(bs[r: r + 2], 'big') & mask
                                            for r in range(0, fp_active, 2)] + prev
 
-        result = []
-        for _, s in df.iterrows():
-            active_bits = set()
-            for k, v in s.items():
-                if v:
-                    active_bits.update(bits_map[(k, v if v < fp_count else fp_count)])
-            result.append(active_bits)
-        return result
+        active_bits = set()
+        for k, v in df.loc[0].items():
+            if v:
+                active_bits.update(bits_map[(k, v if v < fp_count else fp_count)])
+        return active_bits
 
     _fp_size = 12
     _fp_count = 4
@@ -72,10 +65,10 @@ class Fingerprint:
 
 class FingerprintMolecule(Fingerprint):
     @classmethod
-    def _get_fragments(cls, structures):
+    def _get_fragments(cls, structure):
         return Fragmentor(version=cls._fragmentor_version, header=False, fragment_type=cls._fragment_type,
                           workpath=cls._fragmentor_workpath, min_length=cls._fragment_min, max_length=cls._fragment_max,
-                          useformalcharge=True).transform(structures)
+                          useformalcharge=True).transform([structure])
 
     _fragment_type = 3
     _fragment_min = 2
@@ -84,16 +77,16 @@ class FingerprintMolecule(Fingerprint):
 
 class FingerprintReaction(Fingerprint):
     @classmethod
-    def _get_fragments(cls, structures):
-        if isinstance(structures[0], ReactionContainer):
-            structures = [~x for x in structures]
+    def _get_fragments(cls, structure):
+        if isinstance(structure, ReactionContainer):
+            structure = ~structure
         try:
             f = Fragmentor(version=cls._fragmentor_version, header=False, fragment_type=cls._fragment_type,
                            workpath=cls._fragmentor_workpath, min_length=cls._fragment_min,
                            max_length=cls._fragment_max, cgr_dynbonds=cls._fragment_dynbond,
-                           useformalcharge=True).transform(structures)
+                           useformalcharge=True).transform([structure])
         except ConfigurationError:
-            f = DataFrame(index=range(len(structures)))
+            f = DataFrame(index=[0])
         return f
 
     _fragment_type = 3
