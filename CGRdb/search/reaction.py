@@ -22,8 +22,7 @@
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
 from itertools import product
-from operator import itemgetter
-from pony.orm import select, raw_sql, left_join
+from pony.orm import select
 from ..utils import QueryCache
 
 
@@ -42,26 +41,37 @@ class SearchReaction:
         """
         cgr substructure search
         :param structure: CGRtools ReactionContainer
-        :param number: top limit of returned results. not guarantee returning of all available data.
-        set bigger value for this. negative value returns generator for all data in db.
+        :param number: top limit of returned results.
+        zero or negative value returns generator for all data in db.
         :return: list of tuples of Reaction entities and Tanimoto indexes
         """
-        cgr = ~structure
-        q = ((x, y) for x, y in cls._get_reactions(cgr, 'substructure', number, set_raw=True)
-             if any(cgr < rs for rs in x.cgrs_raw))
-
+        q = cls.__substructure_filter(structure, number)
+        if number > 0:
+            return list(q)
         return q
+
+    @classmethod
+    def __substructure_filter(cls, structure, number):
+        cgr = ~structure
+        for x, y in cls._get_reactions(cgr, 'substructure', number, set_raw=True):
+            for s, c in zip(x.structures_all, x.cgrs_all):
+                if cgr < c:
+                    x._cached_structure_raw = s
+                    yield x, y
+                    break
 
     @classmethod
     def find_similar(cls, structure, number=10):
         """
         cgr similar search
         :param structure: CGRtools ReactionContainer
-        :param number: top limit of returned results. not guarantee returning of all available data.
-        negative value returns generator for all data in db.
+        :param number: top limit of returned results.
+        zero or negative value returns generator for all data in db.
         :return: list of tuples of Reaction entities and Tanimoto indexes
         """
         q = cls._get_reactions(structure, 'similar', number)
+        if number > 0:
+            return list(q)
         return q
 
     @classmethod
@@ -75,131 +85,149 @@ class SearchReaction:
         :param page: starting page in pagination
         :return: Reaction entities
         """
-        reaction_cache = cls.__substructure_cache if operator == 'substructure' else cls.__similarity_cache
+        cache = cls.__substructure_cache if operator == 'substructure' else cls.__similarity_cache
+        operator = '@>' if operator == 'substructure' else '%'
         start = (page - 1) * number
         end = start + number
         sig = bytes(cgr)
-        if sig in reaction_cache:
-            ris, iis, its = reaction_cache[sig]
+        key = (sig, operator)
+        if key in cache:
+            ris, its = cache[key]
             if number > 0:
                 ris = ris[start:end]
-                iis = iis[start:end]
                 its = its[start:end]
-        else:
-            if not cls._database_.ReactionSearchCache.exists(signature=sig, operator=operator):
-                bit_set = cls._database_.ReactionIndex.get_fingerprint(cgr)
-                q = cls._database_.select(f"SELECT * FROM {schema}.get_reactions('{bit_set}', '{operator}', $sig)")[0]
-                if not db.ReactionSearchCache.exists(signature=sig, operator=operator):
-                    ris, iis, its = reaction_cache[sig] = q
-                    if number >= 0:
-                        ris = ris[start:end]
-                        iis = iis[start:end]
-                        its = its[start:end]
+        elif not cls._database_.ReactionSearchCache.exists(signature=sig, operator=operator):
+            schema = cls._table_  # define DB schema
+            if schema and isinstance(schema, tuple):
+                schema = schema[0]
+
+            fingerprint = cls._database_.ReactionIndex.get_fingerprint(cgr) or '{}'
+            cls._database_.execute(
+                f"""CREATE TEMPORARY TABLE temp_hits ON COMMIT DROP AS
+                    SELECT hit.reaction, hit.tanimoto
+                    FROM (
+                        SELECT DISTINCT ON (max_found.reaction) reaction, max_found.tanimoto
+                        FROM (
+                            SELECT found.reaction, found.tanimoto,
+                                   max(found.tanimoto) OVER (PARTITION BY found.reaction) max_tanimoto
+                            FROM (
+                                SELECT rs.reaction as reaction,
+                                       smlar(rs.bit_array, '{fingerprint}', 'N.i / (N.a + N.b - N.i)') AS tanimoto
+                                FROM "{schema}"."ReactionIndex" rs
+                                WHERE rs.bit_array {operator} '{fingerprint}'
+                            ) found
+                        ) max_found
+                        WHERE max_found.tanimoto = max_found.max_tanimoto
+                    ) hit
+                    ORDER BY hit.tanimoto DESC
+                """)
+            found = cls._database_.select('SELECT COUNT(*) FROM temp_hits')[0]
+            if found > 1000:
+                cls._database_.execute(
+                    f"""INSERT INTO 
+                        "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, indexes, tanimotos)
+                        VALUES (
+                            $sig, {operator}, CURRENT_TIMESTAMP,
+                            (SELECT array_agg(reaction) FROM temp_hits),
+                            (SELECT array_agg(tanimoto) FROM temp_hits)
+                        )
+                    """)
+                if number > 0:
+                    ris, its = select((x.reactions[start:end], x.tanimotos[start:end])
+                                      for x in cls._database_.ReactionSearchCache
+                                      if x.signature == sig and x.operator == operator).first()
                 else:
-                    if number >= 0:
-                        ris, iis, its = select(
-                            (x.reactions[start:end], x.reaction_indexes[start:end], x.tanimotos[start:end]) for x in
-                            db.ReactionSearchCache if
-                            x.signature == sig and x.operator == operator).first()
-                    else:
-                        mis, sis, sts = select((x.reactions, x.reaction_indexes, x.tanimotos) for x in
-                                               db.ReactionSearchCache if
-                                               x.signature == sig and x.operator == operator).first()
+                    ris, its = select((x.reactions, x.tanimotos)
+                                      for x in cls._database_.ReactionSearchCache
+                                      if x.signature == sig and x.operator == operator).first()
+            elif found:
+                ris, its = cache[key] = cls._database_.select(
+                    "SELECT array_agg(reaction), array_agg(tanimoto) FROM temp_hits"
+                )[0]
+                if number > 0:
+                    ris = ris[start:end]
+                    its = its[start:end]
             else:
-                if number >= 0:
-                    ris, iis, its = select(
-                        (x.reactions[start:end], x.reaction_indexes[start:end], x.tanimotos[start:end]) for x in
-                        db.ReactionSearchCache if
-                        x.signature == sig and x.operator == operator).first()
-                else:
-                    mis, sis, sts = select((x.reactions, x.reaction_indexes, x.tanimotos) for x in
-                                           db.ReactionSearchCache if
-                                           x.signature == sig and x.operator == operator).first()
-
-        reactions = list(cls.select(lambda x: x.id in ris))
-        if set_raw:
-            rsr, sis = defaultdict(list), set()
-            for si, ri in left_join((x.structures.id, x.reaction.id) for x in db.ReactionIndex if x.id in iis):
-                sis.add(si)
-                rsr[ri].append(si)
-
-            mss, mis = {}, defaultdict(list)
-            for structure in db.MoleculeStructure.select(lambda x: x.id in sis):
-                mis[structure.molecule.id].append(structure)
-                if structure.last:
-                    mss[structure.molecule.id] = structure
-
-            not_last = set(mis).difference(mss)
-            if not_last:
-                for structure in db.MoleculeStructure.select(lambda x: x.molecule.id in not_last and x.last):
-                    mss[structure.molecule.id] = structure
-
-            mrs = cls._get_molecule_reaction_entities(reactions)
-            cls._load_structures(reactions, mss, mrs)
-            cls._load_structures_raw(reactions, mis, rsr, mrs)
+                raise StopIteration('not found')
+        elif number > 0:
+            ris, its = select((x.reactions[start:end], x.tanimotos[start:end])
+                              for x in cls._database_.ReactionSearchCache
+                              if x.signature == sig and x.operator == operator).first()
         else:
-            if reactions:
-                cls._load_structures(reactions)
-        yield from zip(reactions, its)
+            ris, its = select((x.reactions, x.tanimotos)
+                              for x in cls._database_.ReactionSearchCache
+                              if x.signature == sig and x.operator == operator).first()
 
-    @staticmethod
-    def _get_molecule_reaction_entities(reactions):
-        return list(db.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id))
-
-    @staticmethod
-    def _get_last_molecule_structure_entities(reactions):
-        return list(select(ms for ms in db.MoleculeStructure for mr in db.MoleculeReaction
-                           if ms.molecule == mr.molecule and mr.reaction in reactions and ms.last))
+        rs = {x.id: x for x in cls.select(lambda x: x.id in ris)}
+        if set_raw:
+            cls.load_structures_combinations(rs.values())
+        else:
+            cls.load_structures(rs.values())
+        yield from zip((rs[x] for x in ris), its)
 
     @classmethod
-    def _load_structures_raw(cls, reactions, mis=None, rsr=None, mrs=None):
+    def load_structures_combinations(cls, reactions):
         """
-        preload reaction structures
+        preload all combinations of reaction structures
         :param reactions: reactions entities
-        :param mis: dict of molecule id with list of raw MoleculeStructure found in reaction by query
-        :param rsr: dict of reaction id with list of raw MoleculeStructure ids
-        :param mrs: list of MoleculeReaction entities
         """
-        if not mrs:
-            mrs = cls._get_molecule_reaction_entities(reactions)
+        # preload all molecules and structures
+        ms = defaultdict(list)
+        for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
+                        if ms.molecule == mr.molecule and mr.reaction in reactions).prefetch(cls._database_.Molecule):
+            if x.last:
+                x.molecule._cached_structure = x
+            ms[x.molecule].append(x)
 
-        combos, mapping = defaultdict(list), defaultdict(list)
-        for mr in mrs:
-            ri = mr.reaction.id
-            combos[ri].append([x for x in mis[mr.molecule.id] if x.id in rsr[ri]])
-            mapping[ri].append((mr.is_product, mr.mapping))
+        for m, s in ms.items():
+            m._cached_structures_all = tuple(s)
 
-        for r in reactions:
-            r.structures_raw = rrcs = []
-            for combo in product(*combos[r.id]):
-                rc = ReactionContainer()
-                rrcs.append(rc)
-                for ms, (is_p, ms_map) in zip(combo, mapping[r.id]):
-                    rc['products' if is_p else 'reagents'].append(ms.structure.remap(ms_map, copy=True)
-                                                                  if ms_map else ms.structure)
+        combos, mapping, last = defaultdict(list), defaultdict(list), defaultdict(list)
+        for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
+            r = x.reaction
+            combos[r].append(x.molecule.structures_all)
+            mapping[r].append((x.is_product, x.mapping))
+            last[r].append(x.molecule.structure)
+
+        for x in reactions:
+            # load last structure
+            x._cached_structure = r = ReactionContainer()
+            for s, (is_p, m) in zip(last[x], mapping[x]):
+                r['products' if is_p else 'reagents'].append(s.remap(m, copy=True) if m else s)
+
+            # load all structures
+            combos_x = list(product(*combos[x]))
+            if len(combos_x) == 1:
+                x._cached_structures_all = (r,)
+            else:
+                rs = []
+                for combo in combos_x:
+                    r = ReactionContainer()
+                    rs.append(r)
+                    for s, (is_p, m) in zip(combo, mapping[x]):
+                        r['products' if is_p else 'reagents'].append(s.remap(m, copy=True) if m else s)
+                x._cached_structures_all = tuple(rs)
 
     @classmethod
-    def _load_structures(cls, reactions, mss=None, mrs=None):
+    def load_structures(cls, reactions):
         """
-        preload reaction structures
+        preload reaction last structures
         :param reactions: Reaction entities
-        :param mss: dict of molecule id: last MoleculeStructure
-        :param mrs: list of MoleculeReaction entities
         """
-        rs = {x.id: x for x in reactions}
-        if not mrs:
-            mrs = cls._get_molecule_reaction_entities(reactions)
+        # preload all molecules and last structures
+        for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
+                        if ms.molecule == mr.molecule and ms.last and
+                           mr.reaction in reactions).prefetch(cls._database_.Molecule):
+            x.molecule._cached_structure = x
 
-        if not mss:
-            mss = {x.molecule.id: x for x in cls._get_last_molecule_structure_entities(reactions)}
+        for x in reactions:
+            x._cached_structure = ReactionContainer()
 
-        for r in reactions:
-            r.structure = ReactionContainer()
-
-        for mr in mrs:
-            ms = mss[mr.molecule.id]
-            rs[mr.reaction.id].structure['products' if mr.is_product else 'reagents'].append(
-                ms.structure.remap(mr.mapping, copy=True) if mr.mapping else ms.structure)
+        # load mapping and fill reaction
+        for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
+            s = x.molecule.structure
+            x.reaction.structure['products' if x.is_product else 'reagents'].append(
+                s.remap(x.mapping, copy=True) if x.mapping else s)
 
     __similarity_cache = QueryCache()
     __substructure_cache = QueryCache()

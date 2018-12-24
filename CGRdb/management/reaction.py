@@ -21,56 +21,53 @@
 #
 
 
-def mixin_factory(db):
-    class UpdateMixin:
-        def update_structure(self, structure, user=None):
-            """
-            Update reaction structure by creating a new reaction, moving
-            all necessary data and removing incorrect reaction from db.
-            Works only if this structure does not already exist in db.
+class ManageReaction:
+    def update_structure(self, structure, user=None):
+        """
+        Update reaction structure by creating a new reaction, moving
+        all necessary data and removing incorrect reaction from db.
+        Works only if this structure does not already exist in db.
 
-            Use when mapping or some molecules in reaction is wrong.
+        Use when mapping or some molecules in reaction is wrong.
 
-            :param structure: CGRtools ReactionContainer
-            :param user: user entity
-            :return: updated reaction entity
-            """
-            assert not self.structure_exists(structure), 'structure already exists'
+        :param structure: CGRtools ReactionContainer
+        :param user: user entity
+        :return: updated reaction entity
+        """
+        if self.structure_exists(structure):
+            raise ValueError('structure already exists')
 
-            reaction = db.Reaction(structure, self.user if user is None else user)
+        reaction = type(self)(structure, self.user if user is None else user)
+        return self.__move_reaction_data(reaction)
 
-            return self.__move_reaction_data(reaction)
+    def merge_reactions(self, structure):
+        """
+        Merge metadata of two reaction into one.
+        Use when its necessary to fix some wrong reaction structure,
+        but correct reaction structure already exists in db. Move data
+        of current reaction to existing reaction and remove it from db.
 
-        def merge_reactions(self, structure):
-            """
-            Merge metadata of two reaction into one.
-            Use when its necessary to fix some wrong reaction structure,
-            but correct reaction structure already exists in db. Move data
-            of current reaction to existing reaction and remove it from db.
+        :param structure: CGRtools ReactionContainer
+        :return: merged reaction entity
+        """
 
-            :param structure: CGRtools ReactionContainer
-            :return: merged reaction entity
-            """
+        reaction = self.find_structure(structure)
+        return self.__move_reaction_data(reaction)
 
-            reaction = self.find_structure(structure)
-            return self.__move_reaction_data(reaction)
+    def __move_reaction_data(self, reaction):
+        """
+        Move conditions and classes of current reaction
+        to new reaction and delete incorrect reaction from db.
 
-        def __move_reaction_data(self, reaction):
-            """
-            Move conditions and classes of current reaction
-            to new reaction and delete incorrect reaction from db.
-
-            :param reaction: reaction entity
-            :return: new reaction entity
-            """
-            for c in self.metadata:
-                c.structure = reaction
-            for cls in self.classes:
-                reaction.classes.add(cls)
-            self.delete()
-            return reaction
-
-    return UpdateMixin
+        :param reaction: reaction entity
+        :return: new reaction entity
+        """
+        for c in self.metadata:
+            c.structure = reaction
+        for cls in self.classes:
+            reaction.classes.add(cls)
+        self.delete()
+        return reaction
 
 
-__all__ = [mixin_factory.__name__]
+__all__ = ['ManageReaction']

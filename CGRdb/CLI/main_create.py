@@ -21,7 +21,7 @@
 from json import load
 from LazyPony import LazyEntityMeta
 from pkg_resources import get_distribution, resource_string
-from pony.orm import db_session, Database, sql_debug
+from pony.orm import db_session, Database
 
 
 #major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
@@ -31,7 +31,6 @@ major_version = '3.0'
 def create_core(args):
     schema = args.name
     config = args.config and load(args.config) or {}
-    sql_debug(True)
     db_config = Database()
     LazyEntityMeta.attach(db_config, database='CGRdb_config')
     db_config.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base,
@@ -58,8 +57,12 @@ def create_core(args):
         db.execute(f'CREATE INDEX idx_subst_reaction_index ON "{schema}"."ReactionIndex" USING '
                    'GIN (bit_array gin__int_ops)')
 
-    # with db_session:
-    #     db.execute(resource_string(__package__, 'create.sql').format(schema).replace('$', '$$'))
+        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
+                   f'DELETE FROM "{schema}"."MoleculeSearchCache"'
+                   " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
+        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
+                   f'DELETE FROM "{schema}"."ReactionSearchCache"'
+                   " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)
