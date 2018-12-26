@@ -37,23 +37,23 @@ class SearchReaction:
         return ri and ri.reaction
 
     @classmethod
-    def find_substructures(cls, structure, number=10):
+    def find_substructures(cls, structure, number=10, page=1):
         """
         cgr substructure search
         :param structure: CGRtools ReactionContainer
-        :param number: top limit of returned results.
-        zero or negative value returns generator for all data in db.
+        :param number: number of results. if zero or negative - return all data
+        :param page: starting page in pagination
         :return: list of tuples of Reaction entities and Tanimoto indexes
         """
-        q = cls.__substructure_filter(structure, number)
+        q = cls.__substructure_filter(structure, number, page)
         if number > 0:
             return list(q)
         return q
 
     @classmethod
-    def __substructure_filter(cls, structure, number):
+    def __substructure_filter(cls, structure, number, page):
         cgr = ~structure
-        for x, y in cls._get_reactions(cgr, 'substructure', number, set_raw=True):
+        for x, y in cls._get_reactions(cgr, 'substructure', number, page, set_raw=True):
             for s, c in zip(x.structures_all, x.cgrs_all):
                 if cgr < c:
                     x._cached_structure_raw = s
@@ -61,15 +61,15 @@ class SearchReaction:
                     break
 
     @classmethod
-    def find_similar(cls, structure, number=10):
+    def find_similar(cls, structure, number=10, page=1):
         """
         cgr similar search
         :param structure: CGRtools ReactionContainer
-        :param number: top limit of returned results.
-        zero or negative value returns generator for all data in db.
+        :param number: number of results. if zero or negative - return all data
+        :param page: starting page in pagination
         :return: list of tuples of Reaction entities and Tanimoto indexes
         """
-        q = cls._get_reactions(structure, 'similar', number)
+        q = cls._get_reactions(structure, 'similar', number, page)
         if number > 0:
             return list(q)
         return q
