@@ -35,7 +35,8 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
 
     def __init__(self, structure, user, special=None):
         super().__init__(user=user)
-        self.__cached_structure = self._database_.MoleculeStructure(self, structure, user)
+        self._cached_structure = self._database_.MoleculeStructure(self, structure, user)
+        self._cached_structures_all = (self._cached_structure,)
         if special:
             self.special = special
 
@@ -60,26 +61,31 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         return self.raw_edition.structure
 
     @property
+    def structures_all(self):
+        return tuple(x.structure for x in self.all_editions)
+
+    @property
     def last_edition(self):
-        if self.__cached_structure is None:
-            self.__cached_structure = self._structures.filter(lambda x: x.last).first()
-        return self.__cached_structure
+        if self._cached_structure is None:
+            self._cached_structure = self._structures.filter(lambda x: x.last).first()
+        return self._cached_structure
 
     @property
     def raw_edition(self):
-        if self.__cached_structure_raw is not None:
-            return self.__cached_structure_raw
+        if self._cached_structure_raw is not None:
+            return self._cached_structure_raw
         raise AttributeError('available in entities from queries results only')
 
-    @last_edition.setter
-    def last_edition(self, structure):
-        self.__cached_structure = structure
+    @property
+    def all_editions(self):
+        if self._cached_structures_all is None:
+            s = tuple(self._structures.select())
+            self._cached_structures_all = s
+            if self._cached_structure is None:
+                self._cached_structure = next(x for x in s if x.last)
+        return self._cached_structures_all
 
-    @raw_edition.setter
-    def raw_edition(self, structure):
-        self.__cached_structure_raw = structure
-
-    __cached_structure = __cached_structure_raw = None
+    _cached_structure = _cached_structure_raw = _cached_structures_all = None
 
 
 class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database='CGRdb'):

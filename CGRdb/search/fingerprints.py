@@ -66,9 +66,13 @@ class Fingerprint:
 class FingerprintMolecule(Fingerprint):
     @classmethod
     def _get_fragments(cls, structure):
-        return Fragmentor(version=cls._fragmentor_version, header=False, fragment_type=cls._fragment_type,
-                          workpath=cls._fragmentor_workpath, min_length=cls._fragment_min, max_length=cls._fragment_max,
-                          useformalcharge=True).transform([structure])
+        try:
+            f = Fragmentor(version=cls._fragmentor_version, header=False, fragment_type=cls._fragment_type,
+                           workpath=cls._fragmentor_workpath, min_length=cls._fragment_min,
+                           max_length=cls._fragment_max, useformalcharge=True).transform([structure])
+        except ConfigurationError:
+            f = DataFrame(index=[0])
+        return f
 
     _fragment_type = 3
     _fragment_min = 2

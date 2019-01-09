@@ -4,7 +4,7 @@
 #  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of Reaxys API wrapper.
 #
-#  Reaxys API wrapper is free software; you can redistribute it and/or modify
+#  ReaxysAPI is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU Affero General Public License as published by
 #  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
@@ -21,40 +21,44 @@
 #
 from abc import ABC, abstractmethod
 from CGRtools.containers import MoleculeContainer, ReactionContainer
-from CGRtools.files import SDFwrite, RDFwrite, SDFread, RDFread
+from CGRtools.files import SDFwrite, RDFwrite, RDFread
 from CGRtools.files.MRVrw import xml_dict
 from io import StringIO
+from logging import debug
 from lxml.etree import XML
 from math import ceil
 from typing import List
 from requests import Session
 from requests_futures.sessions import FuturesSession
-from warnings import warn
 
 
 class ReaxysAPI:
     _url = 'https://www.reaxys.com/reaxys/api'
 
-    def __init__(self, caller, username, password):
-        self.__caller = caller
-        self.__session, self.__sessionid = self.__connect(username, password, caller)
+    def __init__(self, caller, username, password, workers=12):
+        self._caller = caller
+        self._workers = workers
+        self._session, self._sessionid = self.__connect(username, password, caller)
 
     def __connect(self, username, password, caller):
-        payload = '<?xml version="1.0"?>\n' \
-                  '<xf>\n' \
-                  '  <request caller="{}">\n' \
-                  '    <statement command="connect" username="{}" password="{}"/>\n' \
-                  '  </request>\n' \
-                  '</xf>'.format(caller, username, password)
+        payload = ('<?xml version="1.0"?>\n'
+                   '<xf>\n'
+                   f'  <request caller="{caller}">\n'
+                   f'    <statement command="connect" username="{username}" password="{password}"/>\n'
+                   '  </request>\n'
+                   '</xf>')
 
         session = Session()
-        root = XML(session.post(self._url, payload).content)
+        response = session.post(self._url, payload)
+        debug(response.text)
+        root = XML(response.content)
         if next(root.getiterator('status')).text == 'OK':
             return session, next(root.getiterator('sessionid')).text
 
         raise Exception(next(root.getiterator('message')).text.split(';', 1)[0])
 
-    def search(self, query, context=None, dbname='RX', no_coresult=False, worker=False, **kwargs):
+    def search(self, query, context=None, dbname='RX', no_coresult=False, worker=False, single_step=False,
+               without_trash=True, **kwargs):
         options = []
         if no_coresult:
             options.append('NO_CORESULT')
@@ -65,42 +69,53 @@ class ReaxysAPI:
             query = self.__mol2query(query, kwargs)
             if context == 'R':
                 options.extend(self.__options(kwargs))
-            elif context is None:
-                context = 'S'
             else:
-                assert context != 'S', 'Invalid context value'
+                if context is None:
+                    context = 'S'
+                elif context != 'S':
+                    raise ValueError('Invalid context')
+                if single_step:
+                    raise ValueError('single step applicable for reactions only')
+                if without_trash:
+                    without_trash = False
         elif isinstance(query, ReactionContainer):
             context = 'R'
             query = self.__rxn2query(query, kwargs)
         elif not isinstance(query, str):
-            raise Exception('Invalid query')
-        else:
-            assert context in ('S', 'R'), 'Invalid context value'
+            raise ValueError('Invalid query')
+        elif context not in ('S', 'R'):
+            raise ValueError('Invalid context value')
+        elif context == 'S':
+            if without_trash:
+                without_trash = False
+            if single_step:
+                raise ValueError('single step applicable for reactions only')
 
-        payload = '<?xml version="1.0" encoding="UTF-8"?>\n' \
-                  '<xf>\n' \
-                  '  <request caller="{}" sessionid="{}">\n' \
-                  '    <statement command="select"/>\n' \
-                  '    <select_list><select_item/></select_list>\n' \
-                  '    <from_clause dbname="{}" context="{}"/>\n' \
-                  '    <where_clause>{}</where_clause>\n' \
-                  '    <order_by_clause></order_by_clause>\n' \
-                  '    <options>{}</options>\n' \
-                  '  </request>\n' \
-                  '</xf>'.format(self.__caller, self.__sessionid, dbname, context, query, ','.join(options))
-        root = XML(self.__session.post(self._url, payload).text.encode())
+        payload = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                   '<xf>\n'
+                   f'  <request caller="{self._caller}" sessionid="{self._sessionid}">\n'
+                   '    <statement command="select"/>\n'
+                   '    <select_list><select_item/></select_list>\n'
+                   f'    <from_clause dbname="{dbname}" context="{context}"/>\n'
+                   f'    <where_clause>{query}{single_step and " and RXD.STP=1" or ""}</where_clause>\n'
+                   '    <order_by_clause></order_by_clause>\n'
+                   f'    <options>{",".join(options)}</options>\n'
+                   '  </request>\n'
+                   '</xf>')
+        response = self._session.post(self._url, payload)
+        debug(response.text)
+        root = XML(response.content)
         resultname = next(root.getiterator('resultname')).text
         resultsize = int(next(root.getiterator('resultsize')).text)
         if resultsize:
-            return (Structure if context == 'S' else Reaction)(self.__session, self.__sessionid, self.__caller,
-                                                               resultname, resultsize, self._url)
+            return (Structure if context == 'S' else Reaction)(self, resultname, resultsize, single_step, without_trash)
 
     def __options(self, kw):  # check options
         xx = []
         for k, v in kw.items():
             if k in self._sel_mol:
                 if xx:
-                    raise Exception('Only one of [{}] acceptable'.format(', '.join(self._sel_mol)))
+                    raise Exception(f'only one of [{", ".join(self._sel_mol)}] acceptable')
                 xx.append(k)
         return xx
 
@@ -115,33 +130,33 @@ class ReaxysAPI:
                 else:
                     a, b = dictionary[k]
                     if a <= v <= b:
-                        xx.append('{}={}'.format(k, v))
+                        xx.append(f'{k}={v}')
                     else:
-                        raise Exception('Invalid value for {}'.format(k))
+                        raise Exception(f'invalid value for {k}')
         return xx
 
     def __mol2query(self, mol, kw):
-        xx = self.__add_query(self._mol_acc, kw)
+        x = self.__add_query(self._mol_acc, kw)
         with StringIO() as b, SDFwrite(b) as w:
             w.write(mol)
-            txt = b.getvalue()
-        return "structure('{}', '{}')".format(txt, ','.join(xx))
+            txt = b.getvalue()[:-5]
+        return f"structure('{txt}','{','.join(x)}')"
 
     def __rxn2query(self, rxn, kw):
-        xx = self.__add_query(self._rxn_acc, kw)
+        x = self.__add_query(self._rxn_acc, kw)
         with StringIO() as b, RDFwrite(b) as w:
             w.write(rxn)
             txt = b.getvalue()
-        return "structure('{}', '{}')".format(txt, ','.join(xx))
+        return f"structure('{txt}','{','.join(x)}')"
 
     def __del__(self):
-        payload = '<?xml version="1.0"?>\n' \
-                  '<xf>\n' \
-                  '  <request caller="{}">\n' \
-                  '    <statement command="disconnect" sessionid="{}"/>\n' \
-                  '  </request>\n' \
-                  '</xf>'.format(self.__caller, self.__sessionid)
-        self.__session.post(self._url, payload)
+        payload = ('<?xml version="1.0"?>\n'
+                   '<xf>\n'
+                   f'  <request caller="{self._caller}">\n'
+                   f'    <statement command="disconnect" sessionid="{self._sessionid}"/>\n'
+                   '  </request>\n'
+                   '</xf>')
+        self._session.post(self._url, payload)
 
     _sel_mol = ('starting_material', 'product', 'reagent', 'catalyst', 'solvent', 'reagent_or_catalyst')
 
@@ -155,17 +170,68 @@ class ReaxysAPI:
 
 
 class Results(ABC):
-    def __init__(self, session, sessionid, caller, resultname, resultsize, url):
-        self.__session = session
-        self.__sessionid = sessionid
-        self.__caller = caller
+    def __init__(self, api, resultname, resultsize, single_step, without_trash):
+        self.__api = api
         self.__result_name = resultname
         self.__result_size = resultsize
-        self.__url = url
-        self.__si = ''.join('<select_item>{}</select_item>\n'.format(xx) for xx in self._fetch_keys)
+        self.__si = ''.join(f'<select_item>{x}</select_item>\n' for x in self._fetch_keys)
+        self.__single_step = single_step
+        self.__without_trash = without_trash
 
     def __str__(self):
-        return '{}/{}/<{}>'.format(type(self), self.__result_size, self.__result_name)
+        return f'{type(self)}/{self.__result_size}/<{self.__result_name}>'
+
+    def __fetch(self, first_item, last_item):
+        payloads = self.__payload_generator(first_item, last_item)
+        futures = []
+
+        with FuturesSession(session=self.__api._session, max_workers=10) as session:
+            for payload in payloads:
+                futures.append(session.post(self.__api._url, payload, background_callback=self._parser))
+                if len(futures) == 10:
+                    break
+
+            while futures:
+                if self.__without_trash:
+                    data = (x for x in futures[0].result().data if x.reagents and x.products)
+                else:
+                    data = futures[0].result().data
+
+                if self.__single_step:
+                    data = (x for x in data if any('steps' not in y for y in x.meta['reaxys_data']))
+
+                yield from data
+
+                del futures[0]
+                payload = next(payloads, None)
+                if payload:
+                    futures.append(session.post(self.__api._url, payload, background_callback=self._parser))
+
+    def __payload_generator(self, first_item, last_item):
+        if last_item == first_item:
+            yield self.__format_payload(first_item, first_item)
+        else:
+            num = int(ceil((last_item - first_item) / 50))
+            for i in range(num):
+                first = i * 50 + first_item
+                last = (i + 1) * 50 - 1 + first_item
+                if last > last_item:
+                    last = last_item
+                yield self.__format_payload(first, last)
+
+    def __format_payload(self, first, last):
+        return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+                '<xf>\n'
+                f'  <request caller="{self.__api._caller}" sessionid="{self.__api._sessionid}">\n'
+                '    <statement command="select"/>\n'
+                f'    <select_list>{self.__si}</select_list>\n'
+                f'    <from_clause resultname="{self.__result_name}" first_item="{first}" last_item="{last}">'
+                '</from_clause>\n'
+                '    <order_by_clause></order_by_clause>\n'
+                '    <group_by_clause></group_by_clause>\n'
+                f'    <options>{self._options_keys}</options>\n'
+                '  </request>\n'
+                '</xf>')
 
     def __len__(self):
         return self.__result_size
@@ -191,7 +257,7 @@ class Results(ABC):
                 return []
             req = list(self.__fetch(start + 1, stop))
             if stop - start != len(req):
-                warn('reaxys returned invalid number of records', ResourceWarning)
+                print('reaxys returned invalid number of records')
             if step > 1:
                 return req[::step]
             return req
@@ -206,53 +272,14 @@ class Results(ABC):
         else:
             raise TypeError('indices must be integers or slices')
 
-    def __fetch(self, first_item, last_item):
-        payloads = self.__payload_generator(first_item, last_item)
-        futures = []
-
-        with FuturesSession(session=self.__session, max_workers=10) as session:
-            for payload in payloads:
-                futures.append(session.post(self.__url, payload, background_callback=self._parser))
-                if len(futures) == 30:
-                    break
-
-            while futures:
-                yield from futures.pop(0).result().data
-
-                payload = next(payloads, None)
-                if payload:
-                    futures.append(session.post(self.__url, payload, background_callback=self._parser))
-
-    def __payload_generator(self, first_item, last_item):
-        if last_item == first_item:
-            yield self.__format_payload(first_item, first_item)
-        else:
-            num = int(ceil((last_item - first_item) / 50))
-            for i in range(num):
-                first = i * 50 + first_item
-                last = (i + 1) * 50 - 1 + first_item
-                if last > last_item:
-                    last = last_item
-                yield self.__format_payload(first, last)
-
-    def __format_payload(self, first, last):
-        return '<?xml version="1.0" encoding="UTF-8"?>\n' \
-              '<xf>\n' \
-              '  <request caller="{}" sessionid="{}">\n' \
-              '    <statement command="select"/>\n' \
-              '    <select_list>{}</select_list>\n' \
-              '    <from_clause resultname="{}" first_item="{}" last_item="{}"></from_clause>\n' \
-              '    <order_by_clause></order_by_clause>\n' \
-              '    <group_by_clause></group_by_clause>\n' \
-              '    <options>{}</options>\n' \
-              '  </request>\n' \
-              '</xf>'.format(self.__caller, self.__sessionid, self.__si, self.__result_name, first, last,
-                             self._options_keys)
-
     __gen = None
 
+    @property
     @abstractmethod
-    def _parser(self, session, response) -> List:
+    def _parser(self):
+        """
+        :return: parser callable with args session, response, which returns list of parsed records
+        """
         pass
 
     @property
@@ -274,26 +301,34 @@ class Reaction(Results):
     _fetch_keys = ('RXD(1,50)', 'RY', 'RX')
     _options_keys = 'ISSUE_RXN=true,ISSUE_RCT=false,OMIT_MAPS=false'
 
-    @classmethod
-    def _parser(cls, session, response):
+    @property
+    def _parser(self):
+        return ReactionParser()
+
+
+class ReactionParser:
+    def __call__(self, session, response):
+        debug(response.text)
         root = XML(response.content)
         res = xml_dict(next(root.getiterator('reactions')), ['sup', 'sub', 'i', 'b'])['reaction']
+        response.data = data = []
         if isinstance(res, list):
-            response.data = data = []
             for x in res:
                 try:
-                    data.append(cls.__parser(x))
-                except (KeyError, StopIteration) as e:
+                    data.append(self.__parser(x))
+                except (KeyError, StopIteration, ValueError) as e:
                     print(e)
         else:
-            response.data = [cls.__parser(res)]
+            try:
+                data.append(self.__parser(res))
+            except (KeyError, StopIteration, ValueError) as e:
+                print(e)
 
-    @classmethod
-    def __parser(cls, data):
-        ry = cls.__ry_parser(data['RY']['RY.STR']['$'])
+    def __parser(self, data):
+        ry = self.__ry_parser(data['RY']['RY.STR']['$'])
         rxd = data['RXD']
-        rxd = [cls.__rxd_parser(x) for x in rxd] if isinstance(rxd, list) else [cls.__rxd_parser(rxd)]
-        ry.meta['reaxys_data'] = rxd
+        ry.meta['reaxys_data'] = [self.__rxd_parser(x) for x in rxd] if isinstance(rxd, list) else \
+            [self.__rxd_parser(rxd)]
         ry.meta['reaxys_id'] = data['RX']['RX.ID']['$']
         return ry
 
@@ -302,14 +337,13 @@ class Reaction(Results):
         with StringIO(data) as f, RDFread(f) as r:
             return next(r)
 
-    @classmethod
-    def __rxd_parser(cls, data):
+    def __rxd_parser(self, data):
         res = {}
         rxd = data['RXDS01']
         if 'RXD.SNR' in data and data['RXD.SNR']['$'] != '1':
             if not isinstance(rxd, list):
-                raise Exception('invalid data')
-            res['stages'] = [cls.__rxds_parser(x) for x in rxd]
+                raise ValueError('invalid data')
+            res['stages'] = [self.__rxds_parser(x) for x in rxd]
         else:
             if data['RXD.STP']['$'] != '1':
                 if 'RXD.MTEXT' not in data:
@@ -317,11 +351,12 @@ class Reaction(Results):
                 else:
                     mtxt = data['RXD.MTEXT']
                     res['steps'] = [x['$'] for x in mtxt] if isinstance(mtxt, list) else [mtxt['$']]
-            res['stages'] = [cls.__rxds_parser(rxd)]
+            res['stages'] = [self.__rxds_parser(rxd)]
 
         if 'citations' in data:
             cit = data['citations']['citation']
-            res['citations'] = [cls.__cit_parser(x) for x in cit] if isinstance(cit, list) else [cls.__cit_parser(cit)]
+            res['citations'] = [self.__cit_parser(x) for x in cit] if isinstance(cit, list) else [
+                self.__cit_parser(cit)]
         return res
 
     @staticmethod
@@ -398,6 +433,6 @@ class Reaction(Results):
             if val:
                 res['catalysts'] = val
 
-        if __debug__ and 'RXD01' in data:  # for debug
-            print(data)
+        if 'RXD01' in data:  # for debug
+            debug(data)
         return res
