@@ -21,7 +21,6 @@
 #
 from datetime import datetime
 from LazyPony import LazyEntityMeta, DoubleLink
-from pickle import dumps, loads
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray, FloatArray
 from ..search import FingerprintMolecule, SearchMolecule
 from pickle import dumps, loads
