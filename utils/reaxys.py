@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2018 Dinar Batyrshin <batyrshin-dinar@mail.ru>
-#  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018, 2019 Dinar Batyrshin <batyrshin-dinar@mail.ru>
+#  Copyright 2018, 2019 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of Reaxys API wrapper.
 #
 #  ReaxysAPI is free software; you can redistribute it and/or modify
@@ -198,7 +198,8 @@ class Results(ABC):
                     data = futures[0].result().data
 
                 if self.__single_step:
-                    data = (x for x in data if any('steps' not in y for y in x.meta['reaxys_data']))
+                    data = (x for x in data if any(len(y['stages']) == 1 and 'steps' not in y
+                                                   for y in x.meta['reaxys_data']))
 
                 yield from data
 
@@ -416,6 +417,8 @@ class ReactionParser:
             res['yield'] = cls.__unhighlight(data['RXD.YD'])
         if 'RXD.TIM' in data:
             res['time'] = cls.__unhighlight(data['RXD.TIM'])
+        if 'RXD.COND' in data:
+            res['other_conditions'] = cls.__unhighlight(data['RXD.COND'])
         if 'RXD02' in data:
             val = cls.__media_parser(data['RXD02'], 'RXD.SRCT')
             if val:
