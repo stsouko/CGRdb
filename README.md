@@ -3,7 +3,7 @@
 INSTALL
 =======
 
-    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=MWUI --process-dependency-links
+    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=CGRdb --process-dependency-links
 
 or
 

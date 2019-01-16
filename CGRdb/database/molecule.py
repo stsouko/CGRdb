@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 #  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -19,9 +20,9 @@
 #  MA 02110-1301, USA.
 #
 from datetime import datetime
-from CGRtools.containers.common import BaseContainer
 from LazyPony import LazyEntityMeta, DoubleLink
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray, FloatArray
+from pickle import dumps, loads
 from ..search import FingerprintMolecule, SearchMolecule
 
 
@@ -94,18 +95,18 @@ class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database=
     molecule = Required('Molecule')
     date = Required(datetime, default=datetime.utcnow)
     last = Required(bool, default=True)
-    data = Required(Json, optimistic=False)
+    data = Required(bytes, optimistic=False)
     signature = Required(bytes, unique=True)
     bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
 
     def __init__(self, molecule, structure, user):
-        super().__init__(molecule=molecule, data=structure.pickle(), user=user, signature=bytes(structure),
+        super().__init__(molecule=molecule, data=dumps(structure), user=user, signature=bytes(structure),
                          bit_array=self.get_fingerprint(structure))
 
     @property
     def structure(self):
         if self.__cached_structure is None:
-            self.__cached_structure = BaseContainer.unpickle(self.data)
+            self.__cached_structure = loads(self.data)
         return self.__cached_structure
 
     __cached_structure = None
