@@ -198,10 +198,13 @@ class Results(ABC):
                     data = futures[0].result().data
 
                 if self.__single_step:
-                    data = (x for x in data if any(len(y['stages']) == 1 and 'steps' not in y
-                                                   for y in x.meta['reaxys_data']))
-
-                yield from data
+                    for r in data:
+                        r.meta['reaxys_data'] = meta = [x for x in r.meta['reaxys_data'] if
+                                                        len(x['stages']) == 1 and 'steps' not in x and x['stages'][0]]
+                        if meta:
+                            yield r
+                else:
+                    yield from data
 
                 del futures[0]
                 payload = next(payloads, None)
@@ -418,7 +421,11 @@ class ReactionParser:
         if 'RXD.TIM' in data:
             res['time'] = cls.__unhighlight(data['RXD.TIM'])
         if 'RXD.COND' in data:
-            res['other_conditions'] = cls.__unhighlight(data['RXD.COND'])
+            val = data['RXD.COND']
+            if isinstance(val, list):
+                res['other_conditions'] = [cls.__unhighlight(x) for x in val]
+            else:
+                res['other_conditions'] = [cls.__unhighlight(data['RXD.COND'])]
         if 'RXD02' in data:
             val = cls.__media_parser(data['RXD02'], 'RXD.SRCT')
             if val:
