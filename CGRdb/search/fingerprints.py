@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 #  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
-#  Copyright 2018 Adelia Fatykhova <adelik21979@gmail.com>
+#  Copyright 2018, 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
