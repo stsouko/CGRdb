@@ -24,7 +24,6 @@ from CGRtools.containers import ReactionContainer
 from CIMtools.exceptions import ConfigurationError
 from CIMtools.preprocessing import Fragmentor
 from numpy import zeros
-from pandas import DataFrame
 
 
 class Fingerprint:
@@ -37,22 +36,28 @@ class Fingerprint:
 
     @classmethod
     def get_fingerprint(cls, structure):
-        df = cls._get_fragments(structure)
+        df = cls._get_fragments(structure) if len(structure) > 2 else None
         mask = 2 ** cls._fp_size - 1
         fp_count = cls._fp_count
         fp_active = cls._fp_active * 2
         bits_map = {}
-        for f in df.columns:
-            prev = []
-            for i in range(1, fp_count + 1):
-                bs = md5(f'{i}_{f}'.encode()).digest()
-                bits_map[(f, i)] = prev = [int.from_bytes(bs[r: r + 2], 'big') & mask
-                                           for r in range(0, fp_active, 2)] + prev
-
         active_bits = set()
-        for k, v in df.loc[0].items():
-            if v:
-                active_bits.update(bits_map[(k, v if v < fp_count else fp_count)])
+
+        atoms = set(int(a) for _, a in structure.atoms())
+        active_bits.update(*[(i >> 12, i & 4095) for i in atoms])
+
+        if df is not None:
+            for f in df.columns:
+                prev = []
+                for i in range(1, fp_count + 1):
+                    bs = md5(f'{i}_{f}'.encode()).digest()
+                    bits_map[(f, i)] = prev = [int.from_bytes(bs[r: r + 2], 'big') & mask
+                                               for r in range(0, fp_active, 2)] + prev
+
+            for k, v in df.loc[0].items():
+                if v:
+                    active_bits.update(bits_map[(k, v if v < fp_count else fp_count)])
+
         return active_bits
 
     _fp_size = 12
@@ -71,7 +76,7 @@ class FingerprintMolecule(Fingerprint):
                            workpath=cls._fragmentor_workpath, min_length=cls._fragment_min,
                            max_length=cls._fragment_max, useformalcharge=True).transform([structure])
         except ConfigurationError:
-            f = DataFrame(index=[0])
+            f = None
         return f
 
     _fragment_type = 3
@@ -90,8 +95,38 @@ class FingerprintReaction(Fingerprint):
                            max_length=cls._fragment_max, cgr_dynbonds=cls._fragment_dynbond,
                            useformalcharge=True).transform([structure])
         except ConfigurationError:
-            f = DataFrame(index=[0])
+            f = None
         return f
+
+    @classmethod
+    def get_fingerprint(cls, structure):
+        df = cls._get_fragments(structure)
+        mask = 2 ** cls._fp_size - 1
+        fp_count = cls._fp_count
+        fp_active = cls._fp_active * 2
+        bits_map = {}
+        active_bits = set()
+        if isinstance(structure, ReactionContainer):
+            r_atoms = set(int(a) for r in structure.reagents for _, a in r.atoms())
+            p_atoms = set(int(a) for r in structure.products for _, a in r.atoms())
+            atoms = r_atoms.union(p_atoms)
+        else:
+            atoms = set(int(a) for _, a in structure.atoms())
+        active_bits.update(*[(i >> 12, i & 4095) for i in atoms])
+
+        if df is not None:
+            for f in df.columns:
+                prev = []
+                for i in range(1, fp_count + 1):
+                    bs = md5(f'{i}_{f}'.encode()).digest()
+                    bits_map[(f, i)] = prev = [int.from_bytes(bs[r: r + 2], 'big') & mask
+                                               for r in range(0, fp_active, 2)] + prev
+
+            for k, v in df.loc[0].items():
+                if v:
+                    active_bits.update(bits_map[(k, v if v < fp_count else fp_count)])
+
+        return active_bits
 
     _fragment_type = 3
     _fragment_min = 2
