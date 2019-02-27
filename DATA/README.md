@@ -1,0 +1,1 @@
+CGRdbData is Example of Data Entities for CGRdb

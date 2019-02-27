@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017-2019 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -25,10 +25,6 @@ from pkg_resources import get_distribution
 from pony.orm import db_session, Database
 from sys import path
 from .database import *
-
-
-#major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
-major_version = '3.0'
 
 
 env = getenv('CGR_DB')
@@ -76,9 +72,15 @@ class Loader:
         self.__schemas = {}
 
         with db_session:
+            major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
             config = db_config.Config.select(lambda x: x.version == major_version)[:]
 
         for c in config:
+            for p in c.config['packages']:  # check availability of extra packages
+                p_name, *p_version = p.split('==', 1)
+                if p_version and not get_distribution(p_name).version.startswith(p_version[0]):
+                    raise ImportError(f"{p_name}'s version invalid")
+
             db = Database()
             LazyEntityMeta.attach(db, c.name, 'CGRdb')
 

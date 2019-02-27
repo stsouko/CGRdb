@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2019 Ramil Nugmanov <stsouko@live.ru>
-#  This file is part of CGRdb.
+#  Copyright 2019 Ramil Nugmanov <stsouko@live.ru>
+#  This file is part of CGRdbUser.
 #
-#  CGRdb is free software; you can redistribute it and/or modify
+#  CGRdbUser is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU Affero General Public License as published by
 #  the Free Software Foundation; either version 3 of the License, or
 #  (at your option) any later version.
@@ -23,11 +23,11 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-version = '3.1.1'
+version = '3.1.0'
 
 
 setup(
-    name='CGRdb',
+    name='CGRdbUser',
     version=version,
     packages=find_packages(),
     url='https://github.com/stsouko/CGRdb',
@@ -35,16 +35,10 @@ setup(
     author='Dr. Ramil Nugmanov',
     author_email='stsouko@live.ru',
     python_requires='>=3.7.0',
-    entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=3.0.5,<3.1', 'CIMtools>=3.0.4,<3.1', 'LazyPony>=0.1.0,<0.2', 'bitstring', 'pony'],
-    extras_require={'postgres':  ['psycopg2-binary'],
-                    'postgres_cffi':  ['cffi', 'psycopg2cffi'],
-                    'autocomplete': ['argcomplete']},
+    install_requires=['CGRdb>=3.1.1,<3.2'],
     long_description=(Path(__file__).parent / 'README.md').open().read(),
     classifiers=['Environment :: Plugins',
-                 'Intended Audience :: Science/Research',
                  'Intended Audience :: Developers',
-                 'Topic :: Scientific/Engineering :: Chemistry',
                  'Topic :: Software Development :: Libraries :: Python Modules',
                  'License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)',
                  'Operating System :: OS Independent',

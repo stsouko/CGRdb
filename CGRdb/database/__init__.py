@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017-2019 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -19,7 +19,8 @@
 #  MA 02110-1301, USA.
 #
 from .config import *
-from .data import *
 from .molecule import *
 from .reaction import *
-from .user import *
+
+
+__all__ = ['Molecule', 'Reaction', 'Config']

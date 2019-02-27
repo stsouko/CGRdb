@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017-2019 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -20,17 +20,19 @@
 #
 from json import load
 from LazyPony import LazyEntityMeta
-from pkg_resources import get_distribution, resource_string
+from pkg_resources import get_distribution
 from pony.orm import db_session, Database
 
 
-#major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
-major_version = '3.0'
-
-
 def create_core(args):
+    major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
     schema = args.name
     config = args.config and load(args.config) or {}
+    if 'packages' not in config:  # by default CGRdbUser package used for User entity
+        config['packages'] = [f'CGRdbUser=={major_version}']
+    for p in config['packages']:  # check availability of extra packages
+        get_distribution(p)
+
     db_config = Database()
     LazyEntityMeta.attach(db_config, database='CGRdb_config')
     db_config.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base,
