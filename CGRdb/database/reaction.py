@@ -18,6 +18,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from CachedMethods import cached_property
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
 from datetime import datetime
@@ -33,19 +34,17 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
     user = DoubleLink(Required('User', reverse='reactions'), Set('Reaction'))
     molecules = Set('MoleculeReaction')
     reaction_indexes = Set('ReactionIndex')
-    special = Optional(Json)
 
-    def __init__(self, structure, user, special=None):
+    def __init__(self, structure, user):
         """
         storing reaction in DB.
         :param structure: CGRtools ReactionContainer
         :param user: user entity
-        :param special: Json serializable Data (expected dict)
         """
         super().__init__(user=user)
 
         # preload all molecules and structures
-        signatures = {bytes(m) for m in structure.reagents} | {bytes(m) for m in structure.products}
+        signatures = {bytes(m) for m in structure.reactants} | {bytes(m) for m in structure.products}
         ms, s2ms = defaultdict(list), {}
         for x in select(x for x in self._database_.MoleculeStructure
                         if x.molecule in select(y.molecule for y in self._database_.MoleculeStructure
@@ -56,13 +55,13 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
             if x.signature in signatures:
                 s2ms[x.signature] = x
             if x.last:
-                x.molecule._cached_structure = x
+                x.molecule.__dict__['last_edition'] = x
             ms[x.molecule].append(x)
         for m, s in ms.items():
-            m._cached_structures_all = tuple(s)
+            m.__dict__['all_editions'] = tuple(s)
 
         combinations, duplicates = [], {}
-        for sl, is_p in ((structure.reagents, False), (structure.products, True)):
+        for sl, is_p in ((structure.reactants, False), (structure.products, True)):
             for s in sl:
                 sig = bytes(s)
                 ms = s2ms.get(sig)
@@ -90,28 +89,25 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
                     self._database_.MoleculeReaction(reaction=self, molecule=m, is_product=is_p, mapping=mapping)
                     combinations.append([s])
 
-        reagents_len = len(structure.reagents)
+        reactants_len = len(structure.reactants)
         combinations = tuple(product(*combinations))
         if len(combinations) == 1:  # optimize
-            self._cached_structures_all = (structure,)
-            self._cached_structure = structure
+            self.__dict__['structures'] = (structure,)
+            self.__dict__['structure'] = structure
             self._database_.ReactionIndex(self, structure, True)
         else:
             x = combinations[0]
-            self._cached_structure = ReactionContainer(reagents=x[:reagents_len], products=x[reagents_len:])
-            self._database_.ReactionIndex(self, self._cached_structure, True)
+            self.__dict__['structure'] = r = ReactionContainer(x[:reactants_len], x[reactants_len:])
+            self._database_.ReactionIndex(self, r, True)
 
             cgr = {}
             for x in combinations[1:]:
-                x = ReactionContainer(reagents=x[:reagents_len], products=x[reagents_len:])
+                x = ReactionContainer(x[:reactants_len], x[reactants_len:])
                 cgr[~x] = x
 
-            self._cached_structures_all = (self._cached_structure, *cgr.values())
+            self.__dict__['structures'] = (r, *cgr.values())
             for x in cgr:
                 self._database_.ReactionIndex(self, x, False)
-
-        if special:
-            self.special = special
 
     def __str__(self):
         """
@@ -125,96 +121,89 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         """
         return bytes(self.cgr)
 
-    @property
+    @cached_property
     def structure(self):
         """
-        ReactionContainer object
+        canonical structure of reaction
         """
-        if self._cached_structure is None:
-            # mapping and molecules preload
-            mrs = self.molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
-            # last molecule structures preload
-            ms = {x.molecule for x in mrs}
-            for x in self._database_.MoleculeStructure.select(lambda x: x.last and x.molecule in ms):
-                x.molecule._cached_structure = x
+        # mapping and molecules preload
+        mrs = self.molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
+        # last molecule structures preload
+        ms = {x.molecule for x in mrs}
+        for x in self._database_.MoleculeStructure.select(lambda x: x.last and x.molecule in ms):
+            x.molecule.__dict__['last_edition'] = x
 
-            self._cached_structure = r = ReactionContainer()
-            for m in mrs:
-                s = m.molecule.structure
-                r['products' if m.is_product else 'reagents'].append(s.remap(m.mapping, copy=True) if m.mapping else s)
-        return self._cached_structure
+        r = ReactionContainer()
+        for m in mrs:
+            s = m.molecule.structure
+            r[m.is_product].append(s.remap(m.mapping, copy=True) if m.mapping else s)
+        return r
 
-    @property
-    def structures_all(self):
-        if self._cached_structures_all is None:
-            # mapping and molecules preload
-            mrs = self.molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
+    @cached_property
+    def structures(self):
+        # mapping and molecules preload
+        mrs = self.molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
 
-            # structures preload
-            ms = {x.molecule: [] for x in mrs}
-            for x in self._database_.MoleculeStructure.select(lambda x: x.molecule in ms.keys()):
-                if x.last:
-                    x.molecule._cached_structure = x
-                ms[x.molecule].append(x)
-            for m, s in ms.items():
-                m._cached_structures_all = tuple(s)
+        # structures preload
+        ms = {x.molecule: [] for x in mrs}
+        for x in self._database_.MoleculeStructure.select(lambda x: x.molecule in ms.keys()):
+            if x.last:
+                x.molecule.__dict__['last_edition'] = x
+            ms[x.molecule].append(x)
+        for m, s in ms.items():
+            m.__dict__['all_editions'] = tuple(s)
 
-            # all possible reaction structure combinations
-            combinations = tuple(product(*(x.molecule.structures_all for x in mrs)))
+        # all possible reaction structure combinations
+        combinations = tuple(product(*(x.molecule.structures for x in mrs)))
 
-            structures = []
-            for x in combinations:
-                r = ReactionContainer()
-                structures.append(r)
-                for s, m in zip(x, mrs):
-                    r['products' if m.is_product else 'reagents'].append(
-                        s.remap(m.mapping, copy=True) if m.mapping else s)
-            self._cached_structures_all = tuple(structures)
+        structures = []
+        for x in combinations:
+            r = ReactionContainer()
+            structures.append(r)
+            for s, m in zip(x, mrs):
+                r[m.is_product].append(s.remap(m.mapping, copy=True) if m.mapping else s)
 
-            if self._cached_structure is None:
-                if len(structures) == 1:  # optimize
-                    self._cached_structure = structures[0]
-                else:
-                    self._cached_structure = r = ReactionContainer()
-                    for m in mrs:
-                        s = m.molecule.structure
-                        r['products' if m.is_product else 'reagents'].append(
-                            s.remap(m.mapping, copy=True) if m.mapping else s)
-        return self._cached_structures_all
+        if 'structure' not in self.__dict__:
+            if len(structures) == 1:  # optimize
+                self.__dict__['structure'] = structures[0]
+            else:
+                self.__dict__['structure'] = r = ReactionContainer()
+                for m in mrs:
+                    s = m.molecule.structure
+                    r[m.is_product].append(s.remap(m.mapping, copy=True) if m.mapping else s)
+        return tuple(structures)
 
-    @property
+    @cached_property
     def structure_raw(self):
-        if self._cached_structure_raw is not None:
-            return self._cached_structure_raw
+        """
+        matched structure of reaction
+        """
         raise AttributeError('available in entities from queries results only')
 
-    @property
+    @cached_property
     def cgr(self):
         """
-        CRG of reaction
+        CRG of reaction canonical structure
         """
-        if self.__cached_cgr is None:
-            self.__cached_cgr = ~self.structure
-        return self.__cached_cgr
+        return ~self.structure
 
-    @property
-    def cgrs_all(self):
-        if self.__cached_cgrs_all is None:
-            self.__cached_cgrs_all = tuple(~x for x in self.structures_all)
-        return self.__cached_cgrs_all
+    @cached_property
+    def cgrs(self):
+        """
+        CGRs of all possible structures of reaction
+        """
+        return tuple(~x for x in self.structures)
 
-    @property
+    @cached_property
     def cgr_raw(self):
-        if self.__cached_cgr_raw is None:
-            self.__cached_cgr_raw = ~self.structure_raw
-        return self.__cached_cgr_raw
-
-    _cached_structure = _cached_structures_all = _cached_structure_raw = None
-    __cached_cgr = __cached_cgrs_all = __cached_cgr_raw = None
+        """
+        CGR of matched structure of reaction
+        """
+        return ~self.structure_raw
 
 
 class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
-    """ molecule to reaction mapping data and role (reagent, reactant, product)
+    """ molecule to reaction mapping data and role (reactant, product)
     """
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
@@ -225,22 +214,18 @@ class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
     def __init__(self, *, mapping=None, **kwargs):
         super().__init__(_mapping=self._compressed_mapping(mapping), **kwargs)
 
-    @property
+    @cached_property
     def mapping(self):
-        if self.__cached_mapping is None:
-            self.__cached_mapping = dict(self._mapping) if self._mapping else {}
-        return self.__cached_mapping
+        return dict(self._mapping) if self._mapping else {}
 
     @mapping.setter
     def mapping(self, mapping):
         self._mapping = self._compressed_mapping(mapping)
-        self.__cached_mapping = None
+        del self.__dict__['mapping']
 
     @staticmethod
     def _compressed_mapping(mapping):
         return mapping and [(k, v) for k, v in mapping.items() if k != v] or None
-
-    __cached_mapping = None
 
 
 class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGRdb'):

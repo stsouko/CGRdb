@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017-2019 Ramil Nugmanov <stsouko@live.ru>
 #  Copyright 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
@@ -19,9 +19,10 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from CachedMethods import cached_property
 from datetime import datetime
 from LazyPony import LazyEntityMeta, DoubleLink
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, IntArray, FloatArray
+from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray
 from pickle import dumps, loads
 from ..search import FingerprintMolecule, SearchMolecule
 
@@ -32,14 +33,11 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
     user = DoubleLink(Required('User', reverse='molecules'), Set('Molecule'))
     _structures = Set('MoleculeStructure')
     reactions = Set('MoleculeReaction')
-    special = Optional(Json)
 
-    def __init__(self, structure, user, special=None):
+    def __init__(self, structure, user):
         super().__init__(user=user)
-        self._cached_structure = self._database_.MoleculeStructure(self, structure, user)
-        self._cached_structures_all = (self._cached_structure,)
-        if special:
-            self.special = special
+        self.__dict__['last_edition'] = x = self._database_.MoleculeStructure(self, structure, user)
+        self.__dict__['all_editions'] = (x,)
 
     def __str__(self):
         """
@@ -53,40 +51,50 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         """
         return bytes(self.structure)
 
-    @property
+    @cached_property
     def structure(self):
+        """
+        canonical structure of molecule
+        """
         return self.last_edition.structure
 
-    @property
+    @cached_property
     def structure_raw(self):
+        """
+        matched structure of molecule
+        """
         return self.raw_edition.structure
 
-    @property
-    def structures_all(self):
+    @cached_property
+    def structures(self):
+        """
+        all structures of molecule
+        """
         return tuple(x.structure for x in self.all_editions)
 
-    @property
+    @cached_property
     def last_edition(self):
-        if self._cached_structure is None:
-            self._cached_structure = self._structures.filter(lambda x: x.last).first()
-        return self._cached_structure
+        """
+        canonical structure entity of molecule
+        """
+        return self._structures.filter(lambda x: x.last).first()
 
-    @property
+    @cached_property
     def raw_edition(self):
-        if self._cached_structure_raw is not None:
-            return self._cached_structure_raw
+        """
+        matched structure entity of molecule
+        """
         raise AttributeError('available in entities from queries results only')
 
-    @property
+    @cached_property
     def all_editions(self):
-        if self._cached_structures_all is None:
-            s = tuple(self._structures.select())
-            self._cached_structures_all = s
-            if self._cached_structure is None:
-                self._cached_structure = next(x for x in s if x.last)
-        return self._cached_structures_all
-
-    _cached_structure = _cached_structure_raw = _cached_structures_all = None
+        """
+        canonical structure entity of molecule
+        """
+        s = tuple(self._structures.select())
+        if 'last_edition' not in self.__dict__:  # caching last structure
+            self.__dict__['last_edition'] = next(x for x in s if x.last)
+        return s
 
 
 class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
@@ -103,13 +111,9 @@ class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database=
         super().__init__(molecule=molecule, data=dumps(structure), user=user, signature=bytes(structure),
                          bit_array=self.get_fingerprint(structure))
 
-    @property
+    @cached_property
     def structure(self):
-        if self.__cached_structure is None:
-            self.__cached_structure = loads(self.data)
-        return self.__cached_structure
-
-    __cached_structure = None
+        return loads(self.data)
 
 
 class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
