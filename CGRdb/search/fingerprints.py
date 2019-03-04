@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017-2019 Ramil Nugmanov <stsouko@live.ru>
 #  Copyright 2018, 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
@@ -19,6 +19,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from CachedMethods import cached_property
 from hashlib import md5
 from CGRtools.containers import ReactionContainer
 from CIMtools.exceptions import ConfigurationError
@@ -27,19 +28,17 @@ from numpy import zeros
 
 
 class Fingerprint:
-    @property
+    @cached_property
     def fingerprint(self):
-        if self.__cached_fingerprint is None:
-            self.__cached_fingerprint = fp = zeros(2 ** self._fp_size, dtype=bool)
-            fp[self.bit_array] = True
-        return self.__cached_fingerprint
+        x = zeros(2 ** self._fp_size, dtype=bool)
+        x[self.bit_array] = True
+        return x
 
     _fp_size = 12
     _fp_count = 4
     _fp_active = 2
     _fragmentor_version = '2017.x'
     _fragmentor_workpath = '/tmp'
-    __cached_fingerprint = None
 
 
 class FingerprintMolecule(Fingerprint):
@@ -51,14 +50,14 @@ class FingerprintMolecule(Fingerprint):
         bits_map = {}
         active_bits = set()
 
-        atoms = set(int(a) for _, a in structure.atoms())
-        active_bits.update(*[(i >> 12, i & mask) for i in atoms])
+        for i in set(int(a) for _, a in structure.atoms()):
+            active_bits.add(i >> 12)
+            active_bits.add(i & mask)
 
         try:
             df = Fragmentor(version=cls._fragmentor_version, header=False, fragment_type=cls._fragment_type,
                             workpath=cls._fragmentor_workpath, min_length=cls._fragment_min,
                             max_length=cls._fragment_max, useformalcharge=True).transform([structure])
-
         except ConfigurationError:
             return active_bits
 
@@ -72,7 +71,6 @@ class FingerprintMolecule(Fingerprint):
         for k, v in df.loc[0].items():
             if v:
                 active_bits.update(bits_map[(k, v if v < fp_count else fp_count)])
-
         return active_bits
 
     _fragment_type = 3
