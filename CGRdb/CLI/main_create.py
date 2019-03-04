@@ -18,6 +18,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from importlib import import_module
 from json import load
 from LazyPony import LazyEntityMeta
 from pkg_resources import get_distribution
@@ -31,13 +32,18 @@ def create_core(args):
     if 'packages' not in config:  # by default CGRdbUser package used for User entity
         config['packages'] = [f'CGRdbUser=={major_version}']
     for p in config['packages']:  # check availability of extra packages
-        get_distribution(p)
+        p = get_distribution(p)
+        import_module(p.project_name)
 
     db_config = Database()
     LazyEntityMeta.attach(db_config, database='CGRdb_config')
     db_config.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base,
                    port=args.port)
     db_config.generate_mapping()
+
+    with db_session:
+        if db_config.Config.exists(name=schema):
+            raise KeyError('schema already exists')
 
     db = Database()
     LazyEntityMeta.attach(db, schema, 'CGRdb')

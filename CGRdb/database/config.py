@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018, 2019 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -25,7 +25,7 @@ from pony.orm import PrimaryKey, Required, Json
 class Config(metaclass=LazyEntityMeta, database='CGRdb_config'):
     _table_ = 'cgr_db_config'
     id = PrimaryKey(int, auto=True)
-    name = Required(str)
+    name = Required(str, unique=True)
     config = Required(Json, index=False, optimistic=False)
     version = Required(str)
 

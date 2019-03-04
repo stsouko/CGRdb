@@ -18,10 +18,11 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from importlib import import_module
 from LazyPony import LazyEntityMeta
 from os import getenv
 from pathlib import Path
-from pkg_resources import get_distribution
+from pkg_resources import get_distribution, DistributionNotFound, VersionConflict
 from pony.orm import db_session, Database
 from sys import path
 from .database import *
@@ -34,80 +35,63 @@ if env:
         path.append(str(cfg))
 
 
-class Loader:
-    def __init__(self, user=None, password=None, host=None, database=None, port=5432, workpath='/tmp'):
-        """
-        load all schemas from db with compatible version
+def load_schema(schema, user=None, password=None, host=None, database=None, port=5432, workpath='/tmp'):
+    """
+    load all schemas from db with compatible version
 
-        :param user: if None then used from config
-        :param password: if None then used from config
-        :param host: if None then used from config
-        :param database: if None then used from config
-        :param port: if None then used from config
-        """
-        if user is None or password is None or host is None or database is None or port is None or workpath is None:
-            try:
-                from config import DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT, WORKPATH
-            except ImportError:
-                raise ImportError('install config.py correctly')
+    :param schema: schema name for loading
+    :param user: if None then used from config
+    :param password: if None then used from config
+    :param host: if None then used from config
+    :param database: if None then used from config
+    :param port: if None then used from config
+    :param workpath: directory for temp files
+    """
+    if user is None or password is None or host is None or database is None or port is None or workpath is None:
+        try:
+            from config import DB_PASS, DB_HOST, DB_USER, DB_NAME, DB_PORT, WORKPATH
+        except ImportError:
+            raise ImportError('install config.py correctly')
 
-        if user is None:
-            user = DB_USER
-        if password is None:
-            password = DB_PASS
-        if host is None:
-            host = DB_HOST
-        if database is None:
-            database = DB_NAME
-        if port is None:
-            port = DB_PORT
+        user = DB_USER
+        password = DB_PASS
+        host = DB_HOST
+        database = DB_NAME
+        port = DB_PORT
         if workpath is None:
             workpath = WORKPATH
 
-        db_config = Database()
-        LazyEntityMeta.attach(db_config, database='CGRdb_config')
-        db_config.bind('postgres', user=user, password=password, host=host, database=database, port=port)
-        db_config.generate_mapping()
+    db_config = Database()
+    LazyEntityMeta.attach(db_config, database='CGRdb_config')
+    db_config.bind('postgres', user=user, password=password, host=host, database=database, port=port)
+    db_config.generate_mapping()
 
-        self.__schemas = {}
+    with db_session:
+        major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
+        config = db_config.Config.get(name=schema, version=major_version)
+    if not config:
+        raise KeyError('schema not exists')
+    config = config.config
 
-        with db_session:
-            major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
-            config = db_config.Config.select(lambda x: x.version == major_version)[:]
+    for p in config['packages']:
+        try:
+            p = get_distribution(p)
+            import_module(p.project_name)
+        except (DistributionNotFound, VersionConflict):
+            raise ImportError(f'packages not installed or has invalid versions: {p}')
 
-        for c in config:
-            for p in c.config['packages']:  # check availability of extra packages
-                p_name, *p_version = p.split('==', 1)
-                if p_version and not get_distribution(p_name).version.startswith(p_version[0]):
-                    raise ImportError(f"{p_name}'s version invalid")
+    db = Database()
+    LazyEntityMeta.attach(db, schema, 'CGRdb')
 
-            db = Database()
-            LazyEntityMeta.attach(db, c.name, 'CGRdb')
+    db.Molecule._fragmentor_workpath = db.Reaction._fragmentor_workpath = workpath
+    for k, v in config.get('molecule', {}).items():
+        setattr(db.Molecule, f'_{k}', v)
+    for k, v in config.get('reaction', {}).items():
+        setattr(db.Reaction, f'_{k}', v)
 
-            db.Molecule._fragmentor_workpath = db.Reaction._fragmentor_workpath = workpath
-            for k, v in c.config.get('molecule', {}).items():
-                setattr(db.Molecule, f'_{k}', v)
-            for k, v in c.config.get('reaction', {}).items():
-                setattr(db.Reaction, f'_{k}', v)
+    db.bind('postgres', user=user, password=password, host=host, database=database, port=port)
+    db.generate_mapping()
+    return db
 
-            db.bind('postgres', user=user, password=password, host=host, database=database, port=port)
-            db.generate_mapping()
-            self.__schemas[c.name] = db
 
-    def __iter__(self):
-        return iter(self.__schemas)
-
-    def __getitem__(self, item):
-        return self.__schemas[item]
-
-    def __contains__(self, item):
-        return item in self.__schemas
-
-    def keys(self):
-        return self.__schemas.keys()
-
-    def values(self):
-        return self.__schemas.values()
-
-    def items(self):
-        return self.__schemas.items()
+__all__ = ['load_schema']
