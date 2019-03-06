@@ -122,7 +122,7 @@ class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     molecules = Required(IntArray, optimistic=False, index=False)
     structures = Required(IntArray, optimistic=False, index=False)
     tanimotos = Required(FloatArray, optimistic=False, index=False)
-    date = Required(datetime)
+    date = Required(datetime, default=datetime.utcnow)
     operator = Required(str)
 
 

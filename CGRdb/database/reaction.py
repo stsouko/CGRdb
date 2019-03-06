@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017, 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017-2019 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -218,11 +218,6 @@ class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
     def mapping(self):
         return dict(self._mapping) if self._mapping else {}
 
-    @mapping.setter
-    def mapping(self, mapping):
-        self._mapping = self._compressed_mapping(mapping)
-        del self.__dict__['mapping']
-
     @staticmethod
     def _compressed_mapping(mapping):
         return mapping and [(k, v) for k, v in mapping.items() if k != v] or None
@@ -247,7 +242,7 @@ class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     signature = Required(bytes)
     reactions = Required(IntArray, optimistic=False, index=False)
     tanimotos = Required(FloatArray, optimistic=False, index=False)
-    date = Required(datetime)
+    date = Required(datetime, default=datetime.utcnow)
     operator = Required(str)
 
 
