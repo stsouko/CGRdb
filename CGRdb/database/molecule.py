@@ -22,7 +22,7 @@
 from CachedMethods import cached_property
 from datetime import datetime
 from LazyPony import LazyEntityMeta, DoubleLink
-from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray
+from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join
 from pickle import dumps, loads
 from ..search import FingerprintMolecule, SearchMolecule
 
@@ -32,12 +32,12 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
     date = Required(datetime, default=datetime.utcnow)
     user = DoubleLink(Required('User', reverse='molecules'), Set('Molecule'))
     _structures = Set('MoleculeStructure')
-    reactions = Set('MoleculeReaction')
+    _reactions = Set('MoleculeReaction')
 
     def __init__(self, structure, user):
         super().__init__(user=user)
-        self.__dict__['last_edition'] = x = self._database_.MoleculeStructure(self, structure, user)
-        self.__dict__['all_editions'] = (x,)
+        self.__dict__['structure_entity'] = x = self._database_.MoleculeStructure(self, structure, user)
+        self.__dict__['structures_entities'] = (x,)
 
     def __str__(self):
         """
@@ -56,45 +56,82 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         """
         canonical structure of molecule
         """
-        return self.last_edition.structure
+        return self.structure_entity.structure
 
     @cached_property
     def structure_raw(self):
         """
         matched structure of molecule
         """
-        return self.raw_edition.structure
+        return self.structure_raw_entity.structure
 
     @cached_property
     def structures(self):
         """
         all structures of molecule
         """
-        return tuple(x.structure for x in self.all_editions)
+        return tuple(x.structure for x in self.structures_entities)
+
+    def reactions(self, page=1, pagesize=100, product=None):
+        """
+        list of reactions including this molecule. chunks-separated for memory saving
+
+        :param page: slice of reactions
+        :param pagesize: maximum number of reactions in list
+        :param product: if True - reactions including this molecule in product side returned.
+        if None any reactions including this molecule.
+        :return: list of reactions
+        """
+        return [x.structure for x in self.reactions_entities(page, pagesize, product)]
 
     @cached_property
-    def last_edition(self):
+    def structure_entity(self):
         """
         canonical structure entity of molecule
         """
         return self._structures.filter(lambda x: x.last).first()
 
     @cached_property
-    def raw_edition(self):
+    def structure_raw_entity(self):
         """
         matched structure entity of molecule
         """
         raise AttributeError('available in entities from queries results only')
 
     @cached_property
-    def all_editions(self):
+    def structures_entities(self):
         """
         canonical structure entity of molecule
         """
         s = tuple(self._structures.select())
-        if 'last_edition' not in self.__dict__:  # caching last structure
-            self.__dict__['last_edition'] = next(x for x in s if x.last)
+        if 'structure_entity' not in self.__dict__:  # caching last structure
+            self.__dict__['structure_entity'] = next(x for x in s if x.last)
         return s
+
+    def reactions_entities(self, page=1, pagesize=100, product=None, set_all=False):
+        """
+        list of reactions entities including this molecule. chunks-separated for memory saving
+
+        :param page: slice of reactions
+        :param pagesize: maximum number of reactions in list
+        :param product: if True - reactions including this molecule in product side returned.
+        if None any reactions including this molecule.
+        :param set_all: preload all structure combinations
+        :return: list of reaction entities
+        """
+        q = left_join(x.reaction for x in self._database_.MoleculeReaction
+                      if x.molecule == self).order_by(lambda x: x.id)
+        if product is not None:
+            q = q.where(lambda x: x.is_product == product)
+
+        reactions = q.page(page, pagesize)
+        if not reactions:
+            return []
+        if set_all:
+            self._database_.Reaction.load_structures_combinations(reactions)
+        else:
+            self._database_.Reaction.load_structures(reactions)
+        return list(reactions)
 
 
 class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
@@ -119,11 +156,12 @@ class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database=
 class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
+    operator = Required(str)
+    date = Required(datetime, default=datetime.utcnow)
     molecules = Required(IntArray, optimistic=False, index=False)
     structures = Required(IntArray, optimistic=False, index=False)
     tanimotos = Required(FloatArray, optimistic=False, index=False)
-    date = Required(datetime, default=datetime.utcnow)
-    operator = Required(str)
+    composite_key(signature, operator)
 
 
 __all__ = ['Molecule', 'MoleculeStructure', 'MoleculeSearchCache']

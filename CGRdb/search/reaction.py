@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018, 2019 Ramil Nugmanov <stsouko@live.ru>
 #  Copyright 2018 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
@@ -19,11 +19,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
-from CGRtools.containers import ReactionContainer
-from collections import defaultdict
-from itertools import product
 from pony.orm import select
-from ..utils import QueryCache
 
 
 class SearchReaction:
@@ -37,200 +33,117 @@ class SearchReaction:
         return ri and ri.reaction
 
     @classmethod
-    def find_substructures(cls, structure, number=10, page=1):
+    def find_substructures(cls, structure, page=1, pagesize=100):
         """
         cgr substructure search
+
         :param structure: CGRtools ReactionContainer
-        :param number: number of results. if zero or negative - return all data
-        :param page: starting page in pagination
+        :param pagesize: number of results on page
+        :param page: number of page in pagination
         :return: list of tuples of Reaction entities and Tanimoto indexes
         """
-        q = cls.__substructure_filter(structure, number, page)
-        if number > 0:
-            return list(q)
-        return q
+        def substructure_filter(cgr):
+            for x, y in cls._structure_query(cgr, 'substructure', page, pagesize, set_raw=True):
+                for s, c in zip(x.structures, x.cgrs):
+                    if cgr < c:
+                        x.__dict__.update(structure_raw=s, cgr_raw=c)
+                        yield x, y
+                        break
+        return list(substructure_filter(~structure))
 
     @classmethod
-    def __substructure_filter(cls, structure, number, page):
-        cgr = ~structure
-        for x, y in cls._get_reactions(cgr, 'substructure', number, page, set_raw=True):
-            for s, c in zip(x.structures_all, x.cgrs_all):
-                if cgr < c:
-                    x._cached_structure_raw = s
-                    yield x, y
-                    break
-
-    @classmethod
-    def find_similar(cls, structure, number=10, page=1):
+    def find_similar(cls, structure, page=1, pagesize=100):
         """
         cgr similar search
+
         :param structure: CGRtools ReactionContainer
-        :param number: number of results. if zero or negative - return all data
-        :param page: starting page in pagination
+        :param pagesize: number of results on page
+        :param page: number of page in pagination
         :return: list of tuples of Reaction entities and Tanimoto indexes
         """
-        q = cls._get_reactions(structure, 'similar', number, page)
-        if number > 0:
-            return list(q)
-        return q
+        return cls._structure_query(~structure, 'similar', page, pagesize)
 
     @classmethod
-    def _get_reactions(cls, cgr, operator, number, page=1, set_raw=False):
+    def _structure_query(cls, cgr, operator, page=1, pagesize=100, set_raw=False):
         """
         extract Reaction entities from ReactionIndex entities.
         cache reaction structure in Reaction entities
+
         :param cgr: query structure CGR
         :param operator: raw sql operator (similar or substructure)
-        :param number: number of results. if zero or negative - return all data
-        :param page: starting page in pagination
         :return: Reaction entities
         """
-        cache = cls.__substructure_cache if operator == 'substructure' else cls.__similarity_cache
-        operator = '@>' if operator == 'substructure' else '%'
-        start = (page - 1) * number
-        end = start + number
-        sig = bytes(cgr)
-        key = (sig, operator)
-        if key in cache:
-            ris, its = cache[key]
-            if number > 0:
-                ris = ris[start:end]
-                its = its[start:end]
-        elif not cls._database_.ReactionSearchCache.exists(signature=sig, operator=operator):
-            schema = cls._table_  # define DB schema
-            if schema and isinstance(schema, tuple):
-                schema = schema[0]
+        signature = bytes(cgr)
+        if not cls._database_.ReactionSearchCache.exists(signature=signature, operator=operator):
+            fingerprint = cls._database_.ReactionIndex.get_fingerprint(cgr)
+            if not cls._fingerprint_query(fingerprint, signature, operator):
+                return []  # nothing found
+        return cls._load_found(signature, operator, page, pagesize, set_raw)
 
-            fingerprint = cls._database_.ReactionIndex.get_fingerprint(cgr) or '{}'
-            cls._database_.execute(
-                f"""CREATE TEMPORARY TABLE temp_hits ON COMMIT DROP AS
-                    SELECT hit.reaction, hit.tanimoto
-                    FROM (
-                        SELECT DISTINCT ON (max_found.reaction) reaction, max_found.tanimoto
-                        FROM (
-                            SELECT found.reaction, found.tanimoto,
-                                   max(found.tanimoto) OVER (PARTITION BY found.reaction) max_tanimoto
-                            FROM (
-                                SELECT rs.reaction as reaction,
-                                       smlar(rs.bit_array, '{fingerprint}', 'N.i / (N.a + N.b - N.i)') AS tanimoto
-                                FROM "{schema}"."ReactionIndex" rs
-                                WHERE rs.bit_array {operator} '{fingerprint}'
-                            ) found
-                        ) max_found
-                        WHERE max_found.tanimoto = max_found.max_tanimoto
-                    ) hit
-                    ORDER BY hit.tanimoto DESC
-                """)
-            found = cls._database_.select('SELECT COUNT(*) FROM temp_hits')[0]
-            if found > 1000:
-                cls._database_.execute(
-                    f"""INSERT INTO 
-                        "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, indexes, tanimotos)
-                        VALUES (
-                            $sig, {operator}, CURRENT_TIMESTAMP,
-                            (SELECT array_agg(reaction) FROM temp_hits),
-                            (SELECT array_agg(tanimoto) FROM temp_hits)
-                        )
-                    """)
-                if number > 0:
-                    ris, its = select((x.reactions[start:end], x.tanimotos[start:end])
-                                      for x in cls._database_.ReactionSearchCache
-                                      if x.signature == sig and x.operator == operator).first()
-                else:
-                    ris, its = select((x.reactions, x.tanimotos)
-                                      for x in cls._database_.ReactionSearchCache
-                                      if x.signature == sig and x.operator == operator).first()
-            elif found:
-                ris, its = cache[key] = cls._database_.select(
-                    "SELECT array_agg(reaction), array_agg(tanimoto) FROM temp_hits"
-                )[0]
-                if number > 0:
-                    ris = ris[start:end]
-                    its = its[start:end]
-            else:
-                raise StopIteration('not found')
-        elif number > 0:
-            ris, its = select((x.reactions[start:end], x.tanimotos[start:end])
-                              for x in cls._database_.ReactionSearchCache
-                              if x.signature == sig and x.operator == operator).first()
-        else:
-            ris, its = select((x.reactions, x.tanimotos)
-                              for x in cls._database_.ReactionSearchCache
-                              if x.signature == sig and x.operator == operator).first()
+    @classmethod
+    def _load_found(cls, signature, operator, page=1, pagesize=100, set_raw=False):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        if pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        ris, its = select((x.reactions[start:end], x.tanimotos[start:end])
+                          for x in cls._database_.ReactionSearchCache
+                          if x.signature == signature and x.operator == operator).first()
+        if not ris:
+            return []
 
         rs = {x.id: x for x in cls.select(lambda x: x.id in ris)}
+
         if set_raw:
             cls.load_structures_combinations(rs.values())
         else:
             cls.load_structures(rs.values())
-        yield from zip((rs[x] for x in ris), its)
+
+        return list(zip((rs[x] for x in ris), its))
 
     @classmethod
-    def load_structures_combinations(cls, reactions):
-        """
-        preload all combinations of reaction structures
-        :param reactions: reactions entities
-        """
-        # preload all molecules and structures
-        ms = defaultdict(list)
-        for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
-                        if ms.molecule == mr.molecule and mr.reaction in reactions).prefetch(cls._database_.Molecule):
-            if x.last:
-                x.molecule._cached_structure = x
-            ms[x.molecule].append(x)
+    def _fingerprint_query(cls, fingerprint, signature, operator):
+        if operator not in ('substructure', 'similar'):
+            raise ValueError('invalid operator')
+        schema = cls._table_[0]  # define DB schema
 
-        for m, s in ms.items():
-            m._cached_structures_all = tuple(s)
+        cls._database_.execute(
+            f"""CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+                SELECT hit.reaction, hit.tanimoto
+                FROM (
+                    SELECT DISTINCT ON (max_found.reaction) reaction, max_found.tanimoto
+                    FROM (
+                        SELECT found.reaction, found.tanimoto,
+                               max(found.tanimoto) OVER (PARTITION BY found.reaction) max_tanimoto
+                        FROM (
+                            SELECT rs.reaction as reaction,
+                                   smlar(rs.bit_array, '{fingerprint or '{}'}') AS tanimoto
+                            FROM "{schema}"."ReactionIndex" rs
+                            WHERE rs.bit_array {'@>' if operator == 'substructure' else '%'} '{fingerprint or '{}'}'
+                        ) found
+                    ) max_found
+                    WHERE max_found.tanimoto = max_found.max_tanimoto
+                ) hit
+                ORDER BY hit.tanimoto DESC
+            """)
 
-        combos, mapping, last = defaultdict(list), defaultdict(list), defaultdict(list)
-        for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
-            r = x.reaction
-            combos[r].append(x.molecule.structures_all)
-            mapping[r].append((x.is_product, x.mapping))
-            last[r].append(x.molecule.structure)
-
-        for x in reactions:
-            # load last structure
-            x._cached_structure = r = ReactionContainer()
-            for s, (is_p, m) in zip(last[x], mapping[x]):
-                r['products' if is_p else 'reagents'].append(s.remap(m, copy=True) if m else s)
-
-            # load all structures
-            combos_x = list(product(*combos[x]))
-            if len(combos_x) == 1:
-                x._cached_structures_all = (r,)
-            else:
-                rs = []
-                for combo in combos_x:
-                    r = ReactionContainer()
-                    rs.append(r)
-                    for s, (is_p, m) in zip(combo, mapping[x]):
-                        r['products' if is_p else 'reagents'].append(s.remap(m, copy=True) if m else s)
-                x._cached_structures_all = tuple(rs)
-
-    @classmethod
-    def load_structures(cls, reactions):
-        """
-        preload reaction last structures
-        :param reactions: Reaction entities
-        """
-        # preload all molecules and last structures
-        for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
-                        if ms.molecule == mr.molecule and ms.last and
-                           mr.reaction in reactions).prefetch(cls._database_.Molecule):
-            x.molecule._cached_structure = x
-
-        for x in reactions:
-            x._cached_structure = ReactionContainer()
-
-        # load mapping and fill reaction
-        for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
-            s = x.molecule.structure
-            x.reaction.structure['products' if x.is_product else 'reagents'].append(
-                s.remap(x.mapping, copy=True) if x.mapping else s)
-
-    __similarity_cache = QueryCache()
-    __substructure_cache = QueryCache()
+        found = cls._database_.select('SELECT COUNT(*) FROM cgrdb_query')[0]
+        if found:
+            cls._database_.execute(
+                f"""INSERT INTO 
+                    "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, indexes, tanimotos)
+                    VALUES (
+                        '\\x{signature.hex()}'::bytea, '{operator}', CURRENT_TIMESTAMP,
+                        (SELECT array_agg(reaction) FROM cgrdb_query),
+                        (SELECT array_agg(tanimoto) FROM cgrdb_query)
+                    )
+                """)
+        else:
+            cls._database_.ReactionSearchCache(signature=signature, operator=operator, reactions=[], tanimotos=[])
+        return found
 
 
 __all__ = ['SearchReaction']

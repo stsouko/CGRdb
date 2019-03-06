@@ -24,7 +24,7 @@ from collections import defaultdict
 from datetime import datetime
 from itertools import product
 from LazyPony import LazyEntityMeta, DoubleLink
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray, composite_key
 from ..search import FingerprintReaction, SearchReaction
 
 
@@ -55,10 +55,10 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
             if x.signature in signatures:
                 s2ms[x.signature] = x
             if x.last:
-                x.molecule.__dict__['last_edition'] = x
+                x.molecule.__dict__['structure_entity'] = x
             ms[x.molecule].append(x)
         for m, s in ms.items():
-            m.__dict__['all_editions'] = tuple(s)
+            m.__dict__['structures_entities'] = tuple(s)
 
         combinations, duplicates = [], {}
         for sl, is_p in ((structure.reactants, False), (structure.products, True)):
@@ -131,7 +131,7 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         # last molecule structures preload
         ms = {x.molecule for x in mrs}
         for x in self._database_.MoleculeStructure.select(lambda x: x.last and x.molecule in ms):
-            x.molecule.__dict__['last_edition'] = x
+            x.molecule.__dict__['structure_entity'] = x
 
         r = ReactionContainer()
         for m in mrs:
@@ -148,10 +148,10 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         ms = {x.molecule: [] for x in mrs}
         for x in self._database_.MoleculeStructure.select(lambda x: x.molecule in ms.keys()):
             if x.last:
-                x.molecule.__dict__['last_edition'] = x
+                x.molecule.__dict__['structure_entity'] = x
             ms[x.molecule].append(x)
         for m, s in ms.items():
-            m.__dict__['all_editions'] = tuple(s)
+            m.__dict__['structures_entities'] = tuple(s)
 
         # all possible reaction structure combinations
         combinations = tuple(product(*(x.molecule.structures for x in mrs)))
@@ -201,6 +201,69 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         """
         return ~self.structure_raw
 
+    @classmethod
+    def prefetch_structure(cls, reactions):
+        """
+        preload reaction canonical structures
+        :param reactions: Reaction entities list
+        """
+        # preload all molecules and last structures
+        for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
+                        if ms.molecule == mr.molecule and ms.last and
+                           mr.reaction in reactions).prefetch(cls._database_.Molecule):
+            x.molecule.__dict__['structure_entity'] = x
+
+        for x in reactions:
+            x.__dict__['structure'] = ReactionContainer()
+
+        # load mapping and fill reaction
+        for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
+            s = x.molecule.structure
+            x.reaction.structure[x.is_product].append(s.remap(x.mapping, copy=True) if x.mapping else s)
+
+    @classmethod
+    def prefetch_structures(cls, reactions):
+        """
+        preload all combinations of reaction structures
+        :param reactions: reactions entities list
+        """
+        # preload all molecules and structures
+        ms = defaultdict(list)
+        for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
+                        if ms.molecule == mr.molecule and mr.reaction in reactions).prefetch(cls._database_.Molecule):
+            if x.last:
+                x.molecule.__dict__['structure_entity'] = x
+            ms[x.molecule].append(x)
+
+        for m, s in ms.items():
+            m.__dict__['structures_entities'] = tuple(s)
+
+        combos, mapping, last = defaultdict(list), defaultdict(list), defaultdict(list)
+        for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
+            r = x.reaction
+            combos[r].append(x.molecule.structures)
+            mapping[r].append((x.is_product, x.mapping))
+            last[r].append(x.molecule.structure)
+
+        for x in reactions:
+            # load last structure
+            x.__dict__['structure'] = r = ReactionContainer()
+            for s, (is_p, m) in zip(last[x], mapping[x]):
+                r[is_p].append(s.remap(m, copy=True) if m else s)
+
+            # load all structures
+            combos_x = list(product(*combos[x]))
+            if len(combos_x) == 1:
+                x.__dict__['structures'] = (r,)
+            else:
+                rs = []
+                for combo in combos_x:
+                    r = ReactionContainer()
+                    rs.append(r)
+                    for s, (is_p, m) in zip(combo, mapping[x]):
+                        r[is_p].append(s.remap(m, copy=True) if m else s)
+                x.__dict__['structures'] = tuple(rs)
+
 
 class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
     """ molecule to reaction mapping data and role (reactant, product)
@@ -240,10 +303,11 @@ class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGR
 class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
+    operator = Required(str)
+    date = Required(datetime, default=datetime.utcnow)
     reactions = Required(IntArray, optimistic=False, index=False)
     tanimotos = Required(FloatArray, optimistic=False, index=False)
-    date = Required(datetime, default=datetime.utcnow)
-    operator = Required(str)
+    composite_key(signature, operator)
 
 
 __all__ = ['Reaction', 'MoleculeReaction', 'ReactionIndex', 'ReactionSearchCache']
