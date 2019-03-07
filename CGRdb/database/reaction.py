@@ -95,11 +95,11 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         if len(combinations) == 1:  # optimize
             self.__dict__['structures'] = (structure,)
             self.__dict__['structure'] = structure
-            self._database_.ReactionIndex(self, structure, True)
+            self._database_.ReactionIndex(self, structure)
         else:
             x = combinations[0]
             self.__dict__['structure'] = r = ReactionContainer(x[:reactants_len], x[reactants_len:])
-            self._database_.ReactionIndex(self, r, True)
+            self._database_.ReactionIndex(self, r)
 
             cgr = {}
             for x in combinations[1:]:
@@ -108,7 +108,7 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
 
             self.__dict__['structures'] = (r, *cgr.values())
             for x in cgr:
-                self._database_.ReactionIndex(self, x, False)
+                self._database_.ReactionIndex(self, x)
 
     def __str__(self):
         """
@@ -277,14 +277,12 @@ class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGR
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
     signature = Required(bytes, unique=True)
-    last = Required(bool)
     bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
 
-    def __init__(self, reaction, structure, last):
+    def __init__(self, reaction, structure):
         if isinstance(structure, ReactionContainer):
             structure = ~structure
-        super().__init__(reaction=reaction, signature=bytes(structure), last=last,
-                         bit_array=self.get_fingerprint(structure))
+        super().__init__(reaction=reaction, signature=bytes(structure), bit_array=self.get_fingerprint(structure))
 
 
 class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
