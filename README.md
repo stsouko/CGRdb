@@ -3,7 +3,7 @@
 INSTALL
 =======
 
-    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=CGRdb --process-dependency-links
+    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=CGRdb
 
 or
 
@@ -11,9 +11,9 @@ or
 
 POSTGRES SETUP
 ==============
-build smlar extension:
+build patched smlar extension:
 
-    git clone git://sigaev.ru/smlar.git
+    git clone https://github.com/SZabirov/smlar.git
     cd smlar
     sudo su
     export USE_PGXS=1
