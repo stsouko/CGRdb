@@ -72,11 +72,12 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
                     # first MoleculeStructure always last
                     if ms.last:  # last structure equal to reaction structure
                         c = [s]
-                        c.extend(x.structure.remap(mapping, copy=True) for x in ms.molecule.all_editions if not x.last)
+                        c.extend(x.structure.remap(mapping, copy=True)
+                                 for x in ms.molecule.structures_entities if not x.last)
                     else:  # last structure remapping
                         c = [ms.molecule.structure.remap(mapping, copy=True)]
                         c.extend(x.structure.remap(mapping, copy=True) if x != ms else s
-                                 for x in ms.molecule.all_editions if not x.last)
+                                 for x in ms.molecule.structures_entities if not x.last)
                     combinations.append(c)
                 else:  # New molecule
                     if sig not in duplicates:

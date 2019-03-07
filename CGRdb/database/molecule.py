@@ -41,13 +41,13 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
 
     def __str__(self):
         """
-        signature of last edition of molecule
+        signature of canonical structure of molecule
         """
         return str(self.structure)
 
     def __bytes__(self):
         """
-        hashed signature of last edition of molecule
+        hashed signature of canonical structure of molecule
         """
         return bytes(self.structure)
 
@@ -128,9 +128,9 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         if not reactions:
             return []
         if set_all:
-            self._database_.Reaction.load_structures_combinations(reactions)
+            self._database_.Reaction.prefetch_structures(reactions)
         else:
-            self._database_.Reaction.load_structures(reactions)
+            self._database_.Reaction.prefetch_structure(reactions)
         return list(reactions)
 
 

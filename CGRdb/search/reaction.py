@@ -45,7 +45,7 @@ class SearchReaction:
         def substructure_filter(cgr):
             for x, y in cls._structure_query(cgr, 'substructure', page, pagesize, set_raw=True):
                 for s, c in zip(x.structures, x.cgrs):
-                    if cgr < c:
+                    if cgr <= c:
                         x.__dict__.update(structure_raw=s, cgr_raw=c)
                         yield x, y
                         break

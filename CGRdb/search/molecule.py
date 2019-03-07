@@ -52,7 +52,7 @@ class SearchMolecule:
         :return: list of tuples of Molecule entities and Tanimoto indexes
         """
         return [(x, y) for x, y in cls._structure_query(structure, 'substructure', page, pagesize, set_raw=True)
-                if structure < x.structure_raw]
+                if structure <= x.structure_raw]
 
     @classmethod
     def find_similar(cls, structure, page=1, pagesize=100):
@@ -167,19 +167,19 @@ class SearchMolecule:
             # preload hit molecules structures
             for x in cls._database_.MoleculeStructure.select(lambda x: x.id in sis):
                 m = x.molecule
-                m.__dict__['raw_edition'] = x
+                m.__dict__['structure_raw_entity'] = x
                 if x.last:
-                    m.__dict__['last_edition'] = x
+                    m.__dict__['structure_entity'] = x
                 else:
                     not_last.append(m)
 
             if not_last:
                 for x in cls._database_.MoleculeStructure.select(lambda x: x.molecule in not_last and x.last):
-                    x.molecule.__dict__['last_edition'] = x
+                    x.molecule.__dict__['structure_entity'] = x
         else:
             # preload molecules last structures
             for x in cls._database_.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.last):
-                x.molecule.__dict__['last_edition'] = x
+                x.molecule.__dict__['structure_entity'] = x
 
         return list(zip((ms[x] for x in mis), sts))
 
