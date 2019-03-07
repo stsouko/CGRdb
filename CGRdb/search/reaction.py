@@ -98,9 +98,9 @@ class SearchReaction:
         rs = {x.id: x for x in cls.select(lambda x: x.id in ris)}
 
         if set_raw:
-            cls.load_structures_combinations(rs.values())
+            cls.prefetch_structures(rs.values())
         else:
-            cls.load_structures(rs.values())
+            cls.prefetch_structure(rs.values())
 
         return list(zip((rs[x] for x in ris), its))
 
@@ -134,7 +134,7 @@ class SearchReaction:
         if found:
             cls._database_.execute(
                 f"""INSERT INTO 
-                    "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, indexes, tanimotos)
+                    "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
                     VALUES (
                         '\\x{signature.hex()}'::bytea, '{operator}', CURRENT_TIMESTAMP,
                         (SELECT array_agg(reaction) FROM cgrdb_query),

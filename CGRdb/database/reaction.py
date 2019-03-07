@@ -175,13 +175,6 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         return tuple(structures)
 
     @cached_property
-    def structure_raw(self):
-        """
-        matched structure of reaction
-        """
-        raise AttributeError('available in entities from queries results only')
-
-    @cached_property
     def cgr(self):
         """
         CRG of reaction canonical structure
@@ -194,13 +187,6 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         CGRs of all possible structures of reaction
         """
         return tuple(~x for x in self.structures)
-
-    @cached_property
-    def cgr_raw(self):
-        """
-        CGR of matched structure of reaction
-        """
-        return ~self.structure_raw
 
     @classmethod
     def prefetch_structure(cls, reactions):
