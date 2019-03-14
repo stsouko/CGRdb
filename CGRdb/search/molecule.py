@@ -19,17 +19,27 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from CGRtools.attributes import Atom
+from CGRtools.containers import MoleculeContainer, QueryContainer
+from CGRtools.periodictable import elements_list
 from functools import partialmethod
+from itertools import product
 from pony.orm import select
 
 
 class SearchMolecule:
     @classmethod
     def structure_exists(cls, structure):
+        if not len(structure):
+            raise ValueError('empty query')
+
         return cls._database_.MoleculeStructure.exists(signature=bytes(structure))
 
     @classmethod
     def find_structure(cls, structure):
+        if not len(structure):
+            raise ValueError('empty query')
+
         ms = cls._database_.MoleculeStructure.get(signature=bytes(structure))
         if ms:
             molecule = ms.molecule
@@ -137,11 +147,22 @@ class SearchMolecule:
 
         :return: Molecule entities
         """
+        if not len(structure):
+            raise ValueError('empty query')
+
         signature = bytes(structure)
         if not cls._database_.MoleculeSearchCache.exists(signature=signature, operator=operator):
-            fingerprint = cls._database_.MoleculeStructure.get_fingerprint(structure)
-            if not cls._fingerprint_query(fingerprint, signature, operator):
-                return []  # nothing found
+            if isinstance(structure, QueryContainer):
+                cls._create_temp_table()
+                for s in cls._query2molecules(structure):
+                    fingerprint = cls._database_.MoleculeStructure.get_fingerprint(s)
+                    cls._insert_temp_table(fingerprint, operator)
+                if not cls._aggregate_temp_table(signature, operator):
+                    return []
+            else:
+                fingerprint = cls._database_.MoleculeStructure.get_fingerprint(structure)
+                if not cls._fingerprint_query(fingerprint, signature, operator):
+                    return []  # nothing found
         return cls._load_found(signature, operator, page, pagesize, set_raw)
 
     @classmethod
@@ -166,6 +187,7 @@ class SearchMolecule:
             not_last = []
             # preload hit molecules structures
             for x in cls._database_.MoleculeStructure.select(lambda x: x.id in sis):
+                x.structure.reset_query_marks()
                 m = x.molecule
                 m.__dict__['structure_raw_entity'] = x
                 if x.last:
@@ -187,39 +209,79 @@ class SearchMolecule:
     def _fingerprint_query(cls, fingerprint, signature, operator):
         if operator not in ('substructure', 'similar'):
             raise ValueError('invalid operator')
-        schema = cls._table_[0]  # define DB schema
+        cls._create_temp_table()
+        cls._insert_temp_table(fingerprint, operator)
+        return cls._aggregate_temp_table(signature, operator)
 
+    @staticmethod
+    def _query2molecules(structure):
+        """
+        convert query into list of molecules.
+
+        multiplicity and isotopes ignored
+        """
+        ms = []
+        atoms = {}
+        for n, qa in structure.atoms():
+            atoms[n] = al = []
+            for e in (qa.element or elements_list):
+                a = Atom()
+                a.element = e
+                al.append(a)
+
+        for c in product(*atoms.values()):
+            m = MoleculeContainer()
+            ms.append(m)
+            for n, a in zip(atoms, c):
+                m.add_atom(a, n)
+            for l, n, b in structure.bonds():
+                m.add_bond(n, l, b)
+        return ms
+
+    @classmethod
+    def _create_temp_table(cls):
         cls._database_.execute(
-            f"""CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-                SELECT hit.molecule, hit.structure, hit.tanimoto
-                FROM (
-                    SELECT DISTINCT ON (max_found.molecule) molecule, max_found.structure, max_found.tanimoto
-                    FROM (
-                        SELECT found.molecule, found.structure, found.tanimoto,
-                               max(found.tanimoto) OVER (PARTITION BY found.molecule) max_tanimoto
-                        FROM (
-                            SELECT ms.molecule as molecule, ms.id as structure,
-                                   smlar(ms.bit_array, '{fingerprint or '{}'}') AS tanimoto
-                            FROM "{schema}"."MoleculeStructure" ms
-                            WHERE ms.bit_array {'@>' if operator == 'substructure' else '%'} '{fingerprint or '{}'}'
-                        ) found
-                    ) max_found
-                    WHERE max_found.tanimoto = max_found.max_tanimoto
-                ) hit
-                ORDER BY hit.tanimoto DESC
+            """CREATE TEMPORARY TABLE
+               cgrdb_query(molecule INTEGER, structure INTEGER, tanimoto DOUBLE PRECISION)
+               ON COMMIT DROP
             """)
 
+    @classmethod
+    def _insert_temp_table(cls, fingerprint, operator):
+        if operator not in ('substructure', 'similar'):
+            raise ValueError('invalid operator')
+        cls._database_.execute(
+            f"""INSERT INTO cgrdb_query(molecule, structure, tanimoto)
+                SELECT x.molecule, x.id, smlar(x.bit_array, '{fingerprint or '{}'}')
+                FROM "{cls._table_[0]}"."MoleculeStructure" x
+                WHERE x.bit_array {'@>' if operator == 'substructure' else '%'} '{fingerprint or '{}'}'
+            """)
+
+    @classmethod
+    def _aggregate_temp_table(cls, signature, operator):
+        if operator not in ('substructure', 'similar'):
+            raise ValueError('invalid operator')
         found = cls._database_.select('SELECT COUNT(*) FROM cgrdb_query')[0]
         if found:
             cls._database_.execute(
                 f"""INSERT INTO 
-                    "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, structures, tanimotos)
-                    VALUES (
-                        '\\x{signature.hex()}'::bytea, '{operator}', CURRENT_TIMESTAMP,
-                        (SELECT array_agg(molecule) FROM cgrdb_query),
-                        (SELECT array_agg(structure) FROM cgrdb_query),
-                        (SELECT array_agg(tanimoto) FROM cgrdb_query)
-                    )
+                    "{cls._table_[0]}"."MoleculeSearchCache"(signature, operator, date, 
+                                                             molecules, structures, tanimotos)
+                    SELECT '\\x{signature.hex()}'::bytea, '{operator}', CURRENT_TIMESTAMP, 
+                           array_agg(ordered.molecule), array_agg(ordered.structure), array_agg(ordered.tanimoto)
+                    FROM (
+                        SELECT hit.molecule, hit.structure, hit.tanimoto
+                        FROM (
+                            SELECT DISTINCT ON (max_found.molecule) molecule, max_found.structure, max_found.tanimoto
+                            FROM (
+                                SELECT found.molecule, found.structure, found.tanimoto,
+                                       max(found.tanimoto) OVER (PARTITION BY found.molecule) max_tanimoto
+                                FROM cgrdb_query found
+                            ) max_found
+                            WHERE max_found.tanimoto = max_found.max_tanimoto
+                        ) hit
+                        ORDER BY hit.tanimoto DESC
+                    ) ordered
                 """)
         else:
             cls._database_.MoleculeSearchCache(signature=signature, operator=operator,

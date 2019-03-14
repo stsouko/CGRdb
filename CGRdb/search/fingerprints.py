@@ -20,10 +20,10 @@
 #  MA 02110-1301, USA.
 #
 from CachedMethods import cached_property
-from hashlib import md5
 from CGRtools.containers import ReactionContainer
 from CIMtools.exceptions import ConfigurationError
 from CIMtools.preprocessing import Fragmentor
+from hashlib import md5
 from numpy import zeros
 
 
