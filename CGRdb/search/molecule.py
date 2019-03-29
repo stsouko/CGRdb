@@ -286,6 +286,7 @@ class SearchMolecule:
         else:
             cls._database_.MoleculeSearchCache(signature=signature, operator=operator,
                                                molecules=[], structures=[], tanimotos=[])
+        cls._database_.execute('DROP TABLE cgrdb_query')
         return found
 
 

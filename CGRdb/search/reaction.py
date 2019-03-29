@@ -143,6 +143,7 @@ class SearchReaction:
                 """)
         else:
             cls._database_.ReactionSearchCache(signature=signature, operator=operator, reactions=[], tanimotos=[])
+        cls._database_.execute('DROP TABLE cgrdb_query')
         return found
 
 
