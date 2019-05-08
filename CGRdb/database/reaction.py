@@ -42,7 +42,9 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         :param user: user entity
         """
         super().__init__(user=user)
-
+        #  move reagents to reactants
+        if structure.reagents:
+            structure = ReactionContainer(structure.reactants + structure.reagents, structure.products)
         # preload all molecules and structures
         signatures = {bytes(m) for m in structure.reactants} | {bytes(m) for m in structure.products}
         ms, s2ms = defaultdict(list), {}
