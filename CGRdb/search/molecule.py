@@ -227,6 +227,7 @@ class SearchMolecule:
             for e in (qa.element or elements_list):
                 a = Atom()
                 a.element = e
+                a.charge = qa.charge
                 al.append(a)
 
         for c in product(*atoms.values()):
