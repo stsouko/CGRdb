@@ -227,7 +227,6 @@ class SearchMolecule:
             for e in (qa.element or elements_list):
                 a = Atom()
                 a.element = e
-                a.charge = qa.charge
                 al.append(a)
 
         for c in product(*atoms.values()):
@@ -264,29 +263,37 @@ class SearchMolecule:
             raise ValueError('invalid operator')
         found = cls._database_.select('SELECT COUNT(*) FROM cgrdb_query')[0]
         if found:
-            cls._database_.execute(
-                f"""INSERT INTO 
-                    "{cls._table_[0]}"."MoleculeSearchCache"(signature, operator, date, 
-                                                             molecules, structures, tanimotos)
-                    SELECT '\\x{signature.hex()}'::bytea, '{operator}', CURRENT_TIMESTAMP, 
-                           array_agg(ordered.molecule), array_agg(ordered.structure), array_agg(ordered.tanimoto)
-                    FROM (
-                        SELECT hit.molecule, hit.structure, hit.tanimoto
+            if not cls._database_.MoleculeSearchCache.exists(signature=signature, operator=operator):
+                cls._database_.execute(
+                    f"""INSERT INTO 
+                        "{cls._table_[0]}"."MoleculeSearchCache"(signature, operator, date, 
+                                                                 molecules, structures, tanimotos)
+
+                        SELECT '\\x{signature.hex()}'::bytea, '{operator}', CURRENT_TIMESTAMP, 
+                               array_agg(ordered.molecule), array_agg(ordered.structure), array_agg(ordered.tanimoto)
                         FROM (
-                            SELECT DISTINCT ON (max_found.molecule) molecule, max_found.structure, max_found.tanimoto
+                            SELECT hit.molecule, hit.structure, hit.tanimoto
                             FROM (
-                                SELECT found.molecule, found.structure, found.tanimoto,
-                                       max(found.tanimoto) OVER (PARTITION BY found.molecule) max_tanimoto
-                                FROM cgrdb_query found
-                            ) max_found
-                            WHERE max_found.tanimoto = max_found.max_tanimoto
-                        ) hit
-                        ORDER BY hit.tanimoto DESC
-                    ) ordered
-                """)
+                                SELECT DISTINCT ON (max_found.molecule) molecule, max_found.structure, max_found.tanimoto
+                                FROM (
+                                    SELECT found.molecule, found.structure, found.tanimoto,
+                                           max(found.tanimoto) OVER (PARTITION BY found.molecule) max_tanimoto
+                                    FROM cgrdb_query found
+                                ) max_found
+                                WHERE max_found.tanimoto = max_found.max_tanimoto
+                            ) hit
+                            ORDER BY hit.tanimoto DESC
+                        ) ordered
+                        ON CONFLICT (signature, operator) DO NOTHING
+                    """)
         else:
-            cls._database_.MoleculeSearchCache(signature=signature, operator=operator,
-                                               molecules=[], structures=[], tanimotos=[])
+            if not cls._database_.MoleculeSearchCache.exists(signature=signature, operator=operator):
+                cls._database_.execute(
+                    f"""INSERT INTO 
+                        "{cls._table_[0]}"."MoleculeSearchCache"(signature, operator, date, molecules, structures, tanimotos)
+                        VALUES ('\\x{signature.hex()}'::bytea, '{operator}', CURRENT_TIMESTAMP, array[]::int[], array[]::int[], array[]::int[])
+                        ON CONFLICT (signature, operator) DO NOTHING
+                    """)
         cls._database_.execute('DROP TABLE cgrdb_query')
         return found
 
