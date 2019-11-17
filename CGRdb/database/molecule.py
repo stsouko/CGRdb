@@ -151,7 +151,7 @@ class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
         return loads(self._structure)
 
 
-class MoleculeSearchCache:  # (metaclass=LazyEntityMeta, database='CGRdb'):
+class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
     operator = Required(str)

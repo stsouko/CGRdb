@@ -52,7 +52,7 @@ def create_core(args):
     db.generate_mapping(create_tables=True)
 
     with db_session:
-        # db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
+        db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
         # db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
 
@@ -75,6 +75,7 @@ def create_core(args):
         db.execute(setup_fingerprint.replace('{schema}', schema))
         db.execute(insert_molecule.replace('{schema}', schema))
         db.execute(insert_molecule_trigger.replace('{schema}', schema))
+        db.execute(search_similar_molecules.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)
