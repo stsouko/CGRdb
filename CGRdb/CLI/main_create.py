@@ -23,6 +23,7 @@ from json import load
 from LazyPony import LazyEntityMeta
 from pkg_resources import get_distribution
 from pony.orm import db_session, Database
+from ..sql import *
 
 
 def create_core(args):
@@ -30,7 +31,7 @@ def create_core(args):
     schema = args.name
     config = args.config and load(args.config) or {}
     if 'packages' not in config:  # by default CGRdbUser package used for User entity
-        config['packages'] = [f'CGRdbUser=={major_version}']
+        config['packages'] = []
     for p in config['packages']:  # check availability of extra packages
         p = get_distribution(p)
         import_module(p.project_name)
@@ -51,26 +52,29 @@ def create_core(args):
     db.generate_mapping(create_tables=True)
 
     with db_session:
-        db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
+        # db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
-        db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
+        # db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
 
     with db_session:
-        db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON "{schema}"."MoleculeStructure" USING '
-                   'GIST (bit_array _int4_sml_ops)')
-        db.execute(f'CREATE INDEX idx_smlar_reaction_index ON "{schema}"."ReactionIndex" USING '
-                   'GIST (bit_array _int4_sml_ops)')
-        db.execute(f'CREATE INDEX idx_subst_molecule_structure ON "{schema}"."MoleculeStructure" USING '
-                   'GIN (bit_array gin__int_ops)')
-        db.execute(f'CREATE INDEX idx_subst_reaction_index ON "{schema}"."ReactionIndex" USING '
-                   'GIN (bit_array gin__int_ops)')
+        # db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON "{schema}"."MoleculeStructure" USING '
+        #            'GIST (bit_array _int4_sml_ops)')
+        # db.execute(f'CREATE INDEX idx_subst_molecule_structure ON "{schema}"."MoleculeStructure" USING '
+        #            'GIN (bit_array gin__int_ops)')
+        # db.execute(f'CREATE INDEX idx_smlar_reaction_index ON "{schema}"."ReactionIndex" USING '
+        #            'GIST (bit_array _int4_sml_ops)')
+        # db.execute(f'CREATE INDEX idx_subst_reaction_index ON "{schema}"."ReactionIndex" USING '
+        #            'GIN (bit_array gin__int_ops)')
 
-        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
-                   f'DELETE FROM "{schema}"."MoleculeSearchCache"'
-                   " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
-        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
-                   f'DELETE FROM "{schema}"."ReactionSearchCache"'
-                   " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
+        # db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
+        #            f'DELETE FROM "{schema}"."MoleculeSearchCache"'
+        #            " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
+        # db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
+        #            f'DELETE FROM "{schema}"."ReactionSearchCache"'
+        #            " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
+        db.execute(setup_fingerprint.replace('{schema}', schema))
+        db.execute(insert_molecule.replace('{schema}', schema))
+        db.execute(insert_molecule_trigger.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)

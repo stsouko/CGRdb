@@ -20,23 +20,21 @@
 #  MA 02110-1301, USA.
 #
 from CachedMethods import cached_property
+from CGRtools.containers import MoleculeContainer
 from datetime import datetime
-from LazyPony import LazyEntityMeta, DoubleLink
+from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join
 from pickle import dumps, loads
-from ..search import FingerprintMolecule, SearchMolecule
 
 
-class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
+class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
-    date = Required(datetime, default=datetime.utcnow)
-    user = DoubleLink(Required('User', reverse='molecules'), Set('Molecule'))
     _structures = Set('MoleculeStructure')
-    _reactions = Set('MoleculeReaction')
+    # _reactions = Set('MoleculeReaction')
 
-    def __init__(self, structure, user):
-        super().__init__(user=user)
-        self.__dict__['structure_entity'] = x = self._database_.MoleculeStructure(self, structure, user)
+    def __init__(self, structure):
+        super().__init__()
+        self.__dict__['structure_entity'] = x = self._database_.MoleculeStructure(molecule=self, structure=structure)
         self.__dict__['structures_entities'] = (x,)
 
     def __str__(self):
@@ -134,26 +132,26 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         return list(reactions)
 
 
-class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
+class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
-    user = DoubleLink(Required('User', reverse='molecule_structures'), Set('MoleculeStructure'))
     molecule = Required('Molecule')
-    date = Required(datetime, default=datetime.utcnow)
     last = Required(bool, default=True)
-    data = Required(bytes, optimistic=False)
-    signature = Required(bytes, unique=True)
-    bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
+    signature = Required(bytes, unique=True, volatile=True)
+    fingerprint = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True)
+    _structure = Required(bytes, optimistic=False, column='structure')
 
-    def __init__(self, molecule, structure, user):
-        super().__init__(molecule=molecule, data=dumps(structure), user=user, signature=bytes(structure),
-                         bit_array=self.get_fingerprint(structure))
+    def __init__(self, **kwargs):
+        structure = kwargs.pop('structure')
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('molecule expected')
+        super().__init__(_structure=dumps(structure), **kwargs)
 
     @cached_property
     def structure(self):
-        return loads(self.data)
+        return loads(self._structure)
 
 
-class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
+class MoleculeSearchCache:  # (metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
     operator = Required(str)

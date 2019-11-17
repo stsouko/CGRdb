@@ -25,10 +25,9 @@ from datetime import datetime
 from itertools import product
 from LazyPony import LazyEntityMeta, DoubleLink
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray, composite_key
-from ..search import FingerprintReaction, SearchReaction
 
 
-class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
+class Reaction:  # (SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     date = Required(datetime, default=datetime.utcnow)
     user = DoubleLink(Required('User', reverse='reactions'), Set('Reaction'))
@@ -254,7 +253,7 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
                 x.__dict__['structures'] = tuple(rs)
 
 
-class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
+class MoleculeReaction:  # (metaclass=LazyEntityMeta, database='CGRdb'):
     """ molecule to reaction mapping data and role (reactant, product)
     """
     id = PrimaryKey(int, auto=True)
@@ -275,7 +274,7 @@ class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
         return mapping and [(k, v) for k, v in mapping.items() if k != v] or None
 
 
-class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGRdb'):
+class ReactionIndex:  # (metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
     signature = Required(bytes, unique=True)
@@ -287,7 +286,7 @@ class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGR
         super().__init__(reaction=reaction, signature=bytes(structure), bit_array=self.get_fingerprint(structure))
 
 
-class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
+class ReactionSearchCache:  # (metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
     operator = Required(str)
