@@ -62,5 +62,5 @@ def load_sql(file):
                    if not x.startswith(('#', '/*', '*/', '\n'))).replace('$', '$$')
 
 
-substructure_molecule = load_sql('substructure_molecule.sql')
+search_substructure_molecule = load_sql('substructure_molecule.sql')
 search_similar_molecules = load_sql('similar_molecule.sql')

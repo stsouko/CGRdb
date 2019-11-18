@@ -71,27 +71,32 @@ RETURNING id, 0 as count'''.replace('{sg}', sg))
     return found[0]
 
 # get most similar structure for each molecule
-mi, si, st = plpy.execute('''SELECT array_agg(o.m), array_agg(o.s), array_agg(o.t)
+found = plpy.execute('''SELECT array_agg(o.m) as m, array_agg(o.s) as s, array_agg(o.t) as t, array_agg(o.structure) as d
 FROM (
-    SELECT h.m, h.s, h.t
+    SELECT h.m, h.s, h.t, s.structure
     FROM (
         SELECT DISTINCT ON (f.m) m, f.s, f.t
         FROM cgrdb_query f
         ORDER BY f.m, f.t DESC
-    ) h
+    ) h LEFT JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id
     ORDER BY h.t DESC
 ) o''')[0]
 
 plpy.execute('DROP TABLE cgrdb_query')
 
-# todo: filter structures
+mis, sis, sts = [], [], []
+for mi, si, st, s in zip(found['m'], found['s'], found['t'], found['d']):
+    if molecule <= loads(s):
+        mis.append(mi)
+        sis.append(si)
+        sts.append(st)
 
 # store found molecules to cache
 found = plpy.execute('''INSERT INTO
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, structures, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mi}, ARRAY{si}, ARRAY{st})
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) as count'''.format(sg=sg, mi=mi, si=si, st=st))
+RETURNING id, array_length(molecules, 1) as count'''.format(sg=sg, mi=mis, si=sis, st=sts))
 
 # concurrent process stored same query. just reuse it
 if not found:
