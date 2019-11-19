@@ -24,7 +24,7 @@ from CGRtools.containers import MoleculeContainer
 from compress_pickle import dumps, loads
 from datetime import datetime
 from LazyPony import LazyEntityMeta
-from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select
+from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
 from ..search import SearchMolecule
 
 
@@ -178,6 +178,13 @@ class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
         end = start + pagesize
         sts = select(x._tanimotos[start:end] for x in self.__class__ if x.id == self.id).first()
         return list(sts)
+
+    def __len__(self):
+        return self._size
+
+    @cached_property
+    def _size(self):
+        return select(raw_sql('array_length(x.molecules, 1)') for x in self.__class__ if x.id == self.id).first()
 
 
 __all__ = ['Molecule', 'MoleculeStructure', 'MoleculeSearchCache']

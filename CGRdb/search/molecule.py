@@ -65,7 +65,9 @@ class SearchMolecule:
         structure = dumps(structure, compression='gzip').hex()
         ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_substructure_molecules('\\x{structure}'::bytea)")[0]
         if fnd:
-            return cls._database_.MoleculeSearchCache[ci]
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
 
     @classmethod
     def find_similar(cls, structure):
@@ -83,7 +85,9 @@ class SearchMolecule:
         structure = dumps(structure, compression='gzip').hex()
         ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_similar_molecules('\\x{structure}'::bytea)")[0]
         if fnd:
-            return cls._database_.MoleculeSearchCache[ci]
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
 
 
 __all__ = ['SearchMolecule']
