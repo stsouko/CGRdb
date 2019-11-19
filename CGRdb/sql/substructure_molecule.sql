@@ -22,9 +22,9 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_substructure_molecules(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import MoleculeContainer, QueryContainer
-from pickle import loads
+from compress_pickle import loads
 
-molecule = loads(data)
+molecule = loads(data, compression='gzip')
 if isinstance(molecule, QueryContainer):
     screen = MoleculeContainer()  # convert query to molecules for screening
     for n, a in molecule.atoms():
@@ -60,8 +60,8 @@ WHERE x.fingerprint @> ARRAY{fp}'''.replace('{fp}', str(fp)))
 if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
     # store empty cache
     found = plpy.execute('''INSERT INTO
-"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, structures, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::integer[], ARRAY[]::integer[])
+"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
+VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::double precision[])
 ON CONFLICT DO NOTHING
 RETURNING id, 0 as count'''.replace('{sg}', sg))
 
@@ -71,32 +71,27 @@ RETURNING id, 0 as count'''.replace('{sg}', sg))
     return found[0]
 
 # get most similar structure for each molecule
-found = plpy.execute('''SELECT array_agg(o.m) as m, array_agg(o.s) as s, array_agg(o.t) as t, array_agg(o.structure) as d
+get_data = '''SELECT h.m, h.t, s.structure as d
 FROM (
-    SELECT h.m, h.s, h.t, s.structure
-    FROM (
-        SELECT DISTINCT ON (f.m) m, f.s, f.t
-        FROM cgrdb_query f
-        ORDER BY f.m, f.t DESC
-    ) h LEFT JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id
-    ORDER BY h.t DESC
-) o''')[0]
+    SELECT DISTINCT ON (f.m) m, f.s, f.t
+    FROM cgrdb_query f
+    ORDER BY f.m, f.t DESC
+) h LEFT JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id
+ORDER BY h.t DESC'''
+mis, sts = [], []
+for row in plpy.cursor(get_data):
+    if molecule <= loads(row['d'], compression='gzip'):
+        mis.append(row['m'])
+        sts.append(row['t'])
 
 plpy.execute('DROP TABLE cgrdb_query')
 
-mis, sis, sts = [], [], []
-for mi, si, st, s in zip(found['m'], found['s'], found['t'], found['d']):
-    if molecule <= loads(s):
-        mis.append(mi)
-        sis.append(si)
-        sts.append(st)
-
 # store found molecules to cache
 found = plpy.execute('''INSERT INTO
-"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, structures, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mi}, ARRAY{si}, ARRAY{st})
+"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
+VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mi}::integer[], ARRAY{st}::double precision[])
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) as count'''.format(sg=sg, mi=mis, si=sis, st=sts))
+RETURNING id, array_length(molecules, 1) as count'''.format(sg=sg, mi=mis, st=sts))
 
 # concurrent process stored same query. just reuse it
 if not found:

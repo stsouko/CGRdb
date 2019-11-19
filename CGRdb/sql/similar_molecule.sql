@@ -22,9 +22,9 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_similar_molecules(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import MoleculeContainer
-from pickle import loads
+from compress_pickle import loads
 
-molecule = loads(data)
+molecule = loads(data, compression='gzip')
 if not isinstance(molecule, MoleculeContainer):
     raise TypeError('MoleculeContainer required')
 
@@ -42,9 +42,9 @@ if found:
 # cache not found. lets start searching
 fp = GD['cgrdb_mfp']._transform_bitset([molecule])[0]
 
-plpy.execute('CREATE TEMPORARY TABLE cgrdb_query(m integer, s integer, t double precision) ON COMMIT DROP')
-plpy.execute('''INSERT INTO cgrdb_query(m, s, t)
-SELECT x.molecule, x.id, smlar(x.fingerprint, ARRAY{fp})
+plpy.execute('CREATE TEMPORARY TABLE cgrdb_query(m integer, t double precision) ON COMMIT DROP')
+plpy.execute('''INSERT INTO cgrdb_query(m, t)
+SELECT x.molecule, smlar(x.fingerprint, ARRAY{fp})
 FROM "{schema}"."MoleculeStructure" x
 WHERE x.fingerprint % ARRAY{fp}'''.replace('{fp}', str(fp)))
 
@@ -52,8 +52,8 @@ WHERE x.fingerprint % ARRAY{fp}'''.replace('{fp}', str(fp)))
 if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
     # store empty cache
     found = plpy.execute('''INSERT INTO
-"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, structures, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::integer[], ARRAY[]::integer[])
+"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
+VALUES ('\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::double precision[])
 ON CONFLICT DO NOTHING
 RETURNING id, 0 as count'''.replace('{sg}', sg))
 
@@ -64,12 +64,12 @@ RETURNING id, 0 as count'''.replace('{sg}', sg))
 
 # store found molecules to cache
 found = plpy.execute('''INSERT INTO
-"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, structures, tanimotos)
-SELECT '\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, array_agg(o.m), array_agg(o.s), array_agg(o.t)
+"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
+SELECT '\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, array_agg(o.m), array_agg(o.t)
 FROM (
-    SELECT h.m, h.s, h.t
+    SELECT h.m, h.t
     FROM (
-        SELECT DISTINCT ON (f.m) m, f.s, f.t
+        SELECT DISTINCT ON (f.m) m, f.t
         FROM cgrdb_query f
         ORDER BY f.m, f.t DESC
     ) h

@@ -21,13 +21,14 @@
 #
 from CachedMethods import cached_property
 from CGRtools.containers import MoleculeContainer
+from compress_pickle import dumps, loads
 from datetime import datetime
 from LazyPony import LazyEntityMeta
-from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join
-from pickle import dumps, loads
+from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select
+from ..search import SearchMolecule
 
 
-class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
+class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     _structures = Set('MoleculeStructure')
     # _reactions = Set('MoleculeReaction')
@@ -57,13 +58,6 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         return self.structure_entity.structure
 
     @cached_property
-    def structure_raw(self):
-        """
-        matched structure of molecule
-        """
-        return self.structure_raw_entity.structure
-
-    @cached_property
     def structures(self):
         """
         all structures of molecule
@@ -87,14 +81,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         """
         canonical structure entity of molecule
         """
-        return self._structures.filter(lambda x: x.last).first()
-
-    @cached_property
-    def structure_raw_entity(self):
-        """
-        matched structure entity of molecule
-        """
-        raise AttributeError('available in entities from queries results only')
+        return self._structures.filter(lambda x: x.is_canonic).first()
 
     @cached_property
     def structures_entities(self):
@@ -102,8 +89,8 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         canonical structure entity of molecule
         """
         s = tuple(self._structures.select())
-        if 'structure_entity' not in self.__dict__:  # caching last structure
-            self.__dict__['structure_entity'] = next(x for x in s if x.last)
+        if 'structure_entity' not in self.__dict__:  # caching canonic structure
+            self.__dict__['structure_entity'] = next(x for x in s if x.is_canonic)
         return s
 
     def reactions_entities(self, page=1, pagesize=100, product=None, set_all=False):
@@ -135,8 +122,8 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
 class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     molecule = Required('Molecule')
-    last = Required(bool, default=True)
-    signature = Required(bytes, unique=True, volatile=True)
+    is_canonic = Required(bool, default=True)
+    signature = Required(bytes, unique=True, volatile=True, lazy=True)
     fingerprint = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True)
     _structure = Required(bytes, optimistic=False, column='structure')
 
@@ -144,11 +131,11 @@ class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
         structure = kwargs.pop('structure')
         if not isinstance(structure, MoleculeContainer):
             raise TypeError('molecule expected')
-        super().__init__(_structure=dumps(structure), **kwargs)
+        super().__init__(_structure=dumps(structure, compression='gzip'), **kwargs)
 
     @cached_property
     def structure(self):
-        return loads(self._structure)
+        return loads(self._structure, compression='gzip')
 
 
 class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -156,10 +143,41 @@ class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     signature = Required(bytes)
     operator = Required(str)
     date = Required(datetime, default=datetime.utcnow)
-    molecules = Required(IntArray, optimistic=False, index=False)
-    structures = Required(IntArray, optimistic=False, index=False)
-    tanimotos = Required(FloatArray, optimistic=False, index=False)
+    _molecules = Required(IntArray, optimistic=False, index=False, column='molecules', lazy=True)
+    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True)
     composite_key(signature, operator)
+
+    def molecules(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        mis = select(x._molecules[start:end] for x in self.__class__ if x.id == self.id).first()
+        if not mis:
+            return []
+
+        # preload molecules
+        ms = {x.id: x for x in self._database_.Molecule.select(lambda x: x.id in mis)}
+
+        # preload molecules canonical structures
+        for x in self._database_.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.is_canonic):
+            x.molecule.__dict__['structure_entity'] = x
+
+        return [ms[x] for x in mis]
+
+    def tanimotos(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        sts = select(x._tanimotos[start:end] for x in self.__class__ if x.id == self.id).first()
+        return list(sts)
 
 
 __all__ = ['Molecule', 'MoleculeStructure', 'MoleculeSearchCache']

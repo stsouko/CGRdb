@@ -22,22 +22,6 @@ from io import TextIOWrapper
 from pkg_resources import resource_stream
 
 
-insert_molecule = '''CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_molecule_structure()
-RETURNS TRIGGER
-AS $$
-from pickle import loads
-# todo: check integrity
-
-mfp = GD['cgrdb_mfp']
-data = TD['new']
-molecule = loads(data['structure'])
-data['fingerprint'] = mfp._transform_bitset([molecule])[0]
-data['signature'] = bytes(molecule)
-
-return 'MODIFY'
-$$ LANGUAGE plpython3u'''.replace('$', '$$')
-
-
 insert_molecule_trigger = '''CREATE TRIGGER cgrdb_insert_molecule_structure
     BEFORE INSERT ON "{schema}"."MoleculeStructure" FOR EACH ROW
     EXECUTE PROCEDURE "{schema}".cgrdb_insert_molecule_structure()'''
@@ -62,5 +46,6 @@ def load_sql(file):
                    if not x.startswith(('#', '/*', '*/', '\n'))).replace('$', '$$')
 
 
+insert_molecule = load_sql('insert_molecule.sql')
 search_substructure_molecule = load_sql('substructure_molecule.sql')
 search_similar_molecules = load_sql('similar_molecule.sql')
