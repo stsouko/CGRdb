@@ -80,7 +80,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
                     combinations.append(c)
                 else:  # New molecule
                     if sig not in duplicates:
-                        m = duplicates[sig] = self._database_.Molecule(s, user)
+                        m = duplicates[sig] = self._database_.Molecule(s)
                         mapping = None
                     else:
                         m = duplicates[sig]
