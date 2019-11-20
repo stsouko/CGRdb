@@ -21,18 +21,17 @@
 from CachedMethods import cached_property
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
+from compress_pickle import dumps, loads
 from datetime import datetime
 from itertools import product
-from LazyPony import LazyEntityMeta, DoubleLink
+from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray, composite_key
 
 
-class Reaction:  # (SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
+class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
-    date = Required(datetime, default=datetime.utcnow)
-    user = DoubleLink(Required('User', reverse='reactions'), Set('Reaction'))
-    molecules = Set('MoleculeReaction')
-    reaction_indexes = Set('ReactionIndex')
+    _molecules = Set('MoleculeReaction')
+    _reaction_indexes = Set('ReactionIndex')
 
     def __init__(self, structure, user):
         """
@@ -253,46 +252,35 @@ class Reaction:  # (SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
                 x.__dict__['structures'] = tuple(rs)
 
 
-class MoleculeReaction:  # (metaclass=LazyEntityMeta, database='CGRdb'):
+class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
     """ molecule to reaction mapping data and role (reactant, product)
     """
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
     molecule = Required('Molecule')
-    is_product = Required(bool, default=False)
+    is_product = Required(bool)
     _mapping = Optional(Json, column='mapping', nullable=True)
-
-    def __init__(self, *, mapping=None, **kwargs):
-        super().__init__(_mapping=self._compressed_mapping(mapping), **kwargs)
 
     @cached_property
     def mapping(self):
         return dict(self._mapping) if self._mapping else {}
 
-    @staticmethod
-    def _compressed_mapping(mapping):
-        return mapping and [(k, v) for k, v in mapping.items() if k != v] or None
 
-
-class ReactionIndex:  # (metaclass=LazyEntityMeta, database='CGRdb'):
+class ReactionIndex(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
-    signature = Required(bytes, unique=True)
-    bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
-
-    def __init__(self, reaction, structure):
-        if isinstance(structure, ReactionContainer):
-            structure = ~structure
-        super().__init__(reaction=reaction, signature=bytes(structure), bit_array=self.get_fingerprint(structure))
+    signature = Required(bytes, unique=True, volatile=True, lazy=True)
+    fingerprint = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True)
+    _structures = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True)
 
 
-class ReactionSearchCache:  # (metaclass=LazyEntityMeta, database='CGRdb'):
+class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     signature = Required(bytes)
     operator = Required(str)
     date = Required(datetime, default=datetime.utcnow)
-    reactions = Required(IntArray, optimistic=False, index=False)
-    tanimotos = Required(FloatArray, optimistic=False, index=False)
+    _reactions = Required(IntArray, optimistic=False, index=False, column='reactions', lazy=True)
+    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True)
     composite_key(signature, operator)
 
 

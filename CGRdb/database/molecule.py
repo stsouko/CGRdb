@@ -31,7 +31,7 @@ from ..search import SearchMolecule
 class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     _structures = Set('MoleculeStructure')
-    # _reactions = Set('MoleculeReaction')
+    _reactions = Set('MoleculeReaction')
 
     def __init__(self, structure):
         super().__init__()

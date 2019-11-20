@@ -19,7 +19,7 @@
 */
 
 
-CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_molecule_structure()
+CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_reaction()
 RETURNS TRIGGER
 AS $$
 from compress_pickle import loads
