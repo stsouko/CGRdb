@@ -19,31 +19,20 @@
 */
 
 
-CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_reaction()
-RETURNS TRIGGER
+CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_reaction(reaction integer, data bytea)
+RETURNS VOID
 AS $$
+from CGRtools.containers import ReactionContainer
 from compress_pickle import loads
 
-mfp = GD['cgrdb_mfp']
-data = TD['new']
-molecule = loads(data['structure'], compression='gzip')
+mfp = GD['cgrdb_rfp']
+reaction = loads(data, compression='gzip')
+if not isinstance(reaction, ReactionContainer):
+    raise plpy.DataException('ReactionContainer required')
 
-current = plpy.execute('SELECT id, structure FROM "{schema}"."MoleculeStructure" '
-                       'WHERE molecule = %d and is_canonic' % data['molecule'])
+rs = bytes(reaction).hex()
 
-if current:
-    s = loads(current[0]['structure'], compression='gzip')
-    if molecule == s:
-        raise ValueError('strcture already exists')
-    elif {n: a.atomic_number for n, a in molecule.atoms()} != {n: a.atomic_number for n, a in s.atoms()}:
-        raise ValueError('structure forms of molecule should has same mapping and atoms')
-    elif data['is_canonic']:  # additional forms of structure should not be canonic
-        data['is_canonic'] = False
-elif not data['is_canonic']:  # new structure should be canonic
-    data['is_canonic'] = True
+if plpy.execute('SELECT id FROM "{schema}"."ReactionIndex" WHERE signature = \\x%s::bytea' % rs):
+    raise plpy.UniqueViolation
 
-data['fingerprint'] = mfp._transform_bitset([molecule])[0]
-data['signature'] = bytes(molecule)
-
-return 'MODIFY'
 $$ LANGUAGE plpython3u

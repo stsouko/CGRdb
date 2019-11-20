@@ -77,6 +77,7 @@ def create_core(args):
         db.execute(insert_molecule_trigger.replace('{schema}', schema))
         db.execute(search_similar_molecules.replace('{schema}', schema))
         db.execute(search_substructure_molecule.replace('{schema}', schema))
+        db.execute(insert_reaction.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)

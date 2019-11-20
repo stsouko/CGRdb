@@ -34,7 +34,7 @@ if isinstance(molecule, QueryContainer):
 elif isinstance(molecule, MoleculeContainer):
     screen = molecule
 else:
-    raise TypeError('MoleculeContainer or QueryContainer required')
+    raise plpy.DataException('MoleculeContainer or QueryContainer required')
 
 sg = bytes(molecule).hex()
 # test for existing cache

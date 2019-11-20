@@ -33,13 +33,12 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
     _molecules = Set('MoleculeReaction')
     _reaction_indexes = Set('ReactionIndex')
 
-    def __init__(self, structure, user):
+    def __init__(self, structure):
         """
         storing reaction in DB.
         :param structure: CGRtools ReactionContainer
-        :param user: user entity
         """
-        super().__init__(user=user)
+        super().__init__()
         #  move reagents to reactants
         if structure.reagents:
             structure = ReactionContainer(structure.reactants + structure.reagents, structure.products)
