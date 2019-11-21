@@ -20,7 +20,7 @@
 
 
 CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_reaction(reaction integer, data bytea)
-RETURNS VOID
+RETURNS integer
 AS $$
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
@@ -32,21 +32,23 @@ reaction = loads(data, compression='gzip')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.DataException('ReactionContainer required')
 
+# fast duplicates check
 rs = bytes(reaction).hex()
-
 if plpy.execute('''SELECT id FROM "{schema}"."ReactionIndex" WHERE signature = '\\x%s'::bytea''' % rs):
     raise plpy.UniqueViolation
 
 signatures = {bytes(m): m for m in chain(reaction.reactants, reaction.products)}
 
-'''SELECT x.id, x.molecule, x.signature
-FROM test."MoleculeStructure" x
-WHERE x.molecule IN (
-    SELECT y.molecule
-    FROM test."MoleculeStructure" y
-    WHERE y.signature IN ('\xba'::bytea, '\xab'::bytea)
-)'''
-
+while True:
+    load_molecules = '''SELECT x.id, x.molecule, x.signature, x.structure
+    FROM "{schema}"."MoleculeStructure" x
+    WHERE x.molecule IN (
+        SELECT y.molecule
+        FROM "{schema}"."MoleculeStructure" y
+        WHERE y.signature IN (%s)
+    )''' % ', '.join("'\\x%s'::bytea" % x for x in signatures)
+    for row in plpy.cursor(load_molecules):
+        ...
 
 ms, s2ms = defaultdict(list), {}
 $$ LANGUAGE plpython3u

@@ -31,6 +31,11 @@ molecule = loads(data['structure'], compression='gzip')
 if not isinstance(molecule, MoleculeContainer):
     raise plpy.DataException('MoleculeContainer required')
 
+# fast duplicates check for prevent slow fingerprint generation
+ms = bytes(molecule).hex()
+if plpy.execute('''SELECT id FROM "{schema}"."MoleculeStructure" WHERE signature = '\\x%s'::bytea''' % ms):
+    raise plpy.UniqueViolation
+
 current = plpy.execute('SELECT id, structure FROM "{schema}"."MoleculeStructure" '
                        'WHERE molecule = %d and is_canonic' % data['molecule'])
 if current:  # check for atom mapping
