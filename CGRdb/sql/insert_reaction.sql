@@ -19,36 +19,57 @@
 */
 
 
-CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_reaction(reaction integer, data bytea)
-RETURNS integer
+CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_reaction()
+RETURNS TRIGGER
 AS $$
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
-from compress_pickle import loads
+from compress_pickle import dumps, loads
 from itertools import chain
 
-mfp = GD['cgrdb_rfp']
-reaction = loads(data, compression='gzip')
+rfp = GD['cgrdb_rfp']
+data = TD['new']
+reaction = loads(data['structure'], compression='gzip')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.DataException('ReactionContainer required')
 
-# fast duplicates check
-rs = bytes(reaction).hex()
-if plpy.execute('''SELECT id FROM "{schema}"."ReactionIndex" WHERE signature = '\\x%s'::bytea''' % rs):
-    raise plpy.UniqueViolation
-
 signatures = {bytes(m): m for m in chain(reaction.reactants, reaction.products)}
 
+plpy.execute('SAVEPOINT molecules')
+
 while True:
-    load_molecules = '''SELECT x.id, x.molecule, x.signature, x.structure
-    FROM "{schema}"."MoleculeStructure" x
+    m2s, sg2m = defaultdict(list), {}
+
+    # load existing in db molecules
+    load = '''SELECT x.molecule, x.signature, x.structure, x.is_canonic
+    FROM "{schema}".MoleculeStructure" x
     WHERE x.molecule IN (
         SELECT y.molecule
         FROM "{schema}"."MoleculeStructure" y
         WHERE y.signature IN (%s)
     )''' % ', '.join("'\\x%s'::bytea" % x for x in signatures)
-    for row in plpy.cursor(load_molecules):
-        ...
+    for row in plpy.cursor(load):
+        m2s[row['molecule']].append(loads(row['structre'], compression='gzip'))
+        sg2m[row['signature']] = row['molecule']
 
-ms, s2ms = defaultdict(list), {}
+    # find new molecules and store in db
+    new = {sg: m for sg, m in signatures.items() if sg not in sg2m}
+    if new:
+        mis = [m['id'] for m in plpy.execute('INSERT INTO "{schema}"."Molecule" (id) VALUES %s RETURNING id' % \
+               ', '.join(['(DEFAULT)'] * len(new)))]
+        insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule, is_canonic) VALUES %s' % \
+                 ', '.join("('\\x%s'::bytea, %d, True)" % (dumps(s, compression='gzip'), m)
+                           for m, s in zip(mis, new.values()))
+        try:
+            plpy.execute(insert)
+        except plpy.SPIError:  # molecules inserting failed
+            plpy.execute('ROLLBACK TO SAVEPOINT molecules')
+            continue
+        plpy.execute('COMMIT')  # save molecules
+        for m, s in zip(mis, new.values()):
+            m2s[m].append(s)
+            sg2m[bytes(s)] = m
+    # generate combinations and store indexes in db
+
+return 'MODIFY'
 $$ LANGUAGE plpython3u

@@ -30,6 +30,7 @@ from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray
 
 class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
+    _structure = Required(bytes, index=False, lazy=True, volatile=True, column='structure', nullable=True)
     _molecules = Set('MoleculeReaction')
     _reaction_indexes = Set('ReactionIndex')
 
