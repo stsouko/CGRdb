@@ -38,10 +38,10 @@ signatures = {bytes(m): m for m in chain(reaction.reactants, reaction.products)}
 plpy.execute('SAVEPOINT molecules')
 
 while True:
-    m2s, sg2m = defaultdict(list), {}
-
     # load existing in db molecules
-    load = '''SELECT x.molecule, x.signature, x.structure, x.is_canonic
+    sg2s, sg2ms = {}, {}
+    m2s = defaultdict(list)
+    load = '''SELECT x.id, x.molecule, x.signature, x.structure
     FROM "{schema}".MoleculeStructure" x
     WHERE x.molecule IN (
         SELECT y.molecule
@@ -49,15 +49,16 @@ while True:
         WHERE y.signature IN (%s)
     )''' % ', '.join("'\\x%s'::bytea" % x for x in signatures)
     for row in plpy.cursor(load):
-        m2s[row['molecule']].append(loads(row['structre'], compression='gzip'))
-        sg2m[row['signature']] = row['molecule']
+        sg2s[row['signature']] = s = loads(row['structure'], compression='gzip')
+        sg2ms[row['signature']] = row['id']
+        m2s[row['molecule']].append(s)
 
     # find new molecules and store in db
-    new = {sg: m for sg, m in signatures.items() if sg not in sg2m}
+    new = {sg: m for sg, m in signatures.items() if sg not in sg2s}
     if new:
         mis = [m['id'] for m in plpy.execute('INSERT INTO "{schema}"."Molecule" (id) VALUES %s RETURNING id' % \
                ', '.join(['(DEFAULT)'] * len(new)))]
-        insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule, is_canonic) VALUES %s' % \
+        insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule, is_canonic) VALUES %s RETURNING id' % \
                  ', '.join("('\\x%s'::bytea, %d, True)" % (dumps(s, compression='gzip'), m)
                            for m, s in zip(mis, new.values()))
         try:
