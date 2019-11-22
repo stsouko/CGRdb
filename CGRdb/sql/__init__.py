@@ -26,6 +26,10 @@ insert_molecule_trigger = '''CREATE TRIGGER cgrdb_insert_molecule_structure
     BEFORE INSERT ON "{schema}"."MoleculeStructure" FOR EACH ROW
     EXECUTE PROCEDURE "{schema}".cgrdb_insert_molecule_structure()'''
 
+insert_reaction_trigger = '''CREATE TRIGGER cgrdb_insert_reaction
+    INSTEAD OF INSERT ON "{schema}"."Reaction" FOR EACH ROW
+    EXECUTE PROCEDURE "{schema}".cgrdb_insert_reaction()'''
+
 setup_fingerprint = '''CREATE OR REPLACE FUNCTION "{schema}".cgrdb_setup_fingerprint(cfg json)
 RETURNS VOID
 AS $$

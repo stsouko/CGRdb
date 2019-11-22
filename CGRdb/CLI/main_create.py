@@ -55,6 +55,10 @@ def create_core(args):
         db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
         # db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
+        db.execute('ALTER TABLE "%s"."Reaction" DROP COLUMN structure' % schema)
+        db.execute('ALTER TABLE "%s"."Reaction" RENAME TO "ReactionRecord"' % schema)
+        db.execute('CREATE VIEW "%s"."Reaction" AS SELECT id, NULL::bytea as structure'
+                   ' FROM "%s"."ReactionRecord"' % (schema, schema))
 
     with db_session:
         # db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON "{schema}"."MoleculeStructure" USING '
@@ -78,6 +82,7 @@ def create_core(args):
         db.execute(search_similar_molecules.replace('{schema}', schema))
         db.execute(search_substructure_molecule.replace('{schema}', schema))
         db.execute(insert_reaction.replace('{schema}', schema))
+        db.execute(insert_reaction_trigger.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)
