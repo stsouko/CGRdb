@@ -32,7 +32,7 @@ if not isinstance(molecule, MoleculeContainer):
     raise plpy.DataException('MoleculeContainer required')
 
 current = plpy.execute('SELECT id, structure FROM "{schema}"."MoleculeStructure" '
-                       'WHERE molecule = %d and is_canonic' % data['molecule'])
+                       f'WHERE molecule = {data["molecule"]} and is_canonic')
 if current:  # check for atom mapping
     s = loads(current[0]['structure'], compression='gzip')
     if {n: a.atomic_number for n, a in molecule.atoms()} != {n: a.atomic_number for n, a in s.atoms()}:
@@ -42,7 +42,7 @@ if current:  # check for atom mapping
 elif not data['is_canonic']:  # new structure should be canonic
     data['is_canonic'] = True
 
-data['fingerprint'] = mfp._transform_bitset([molecule])[0]
+data['fingerprint'] = mfp.transform_bitset([molecule])[0]
 data['signature'] = bytes(molecule)
 
 return 'MODIFY'

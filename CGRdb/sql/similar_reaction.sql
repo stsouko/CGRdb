@@ -19,19 +19,20 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_search_similar_molecules(data bytea, OUT id integer, OUT count integer)
+"{schema}".cgrdb_search_similar_reactions(data bytea, OUT id integer, OUT count integer)
 AS $$
-from CGRtools.containers import MoleculeContainer
+from CGRtools.containers import ReactionContainer
 from compress_pickle import loads
 
-molecule = loads(data, compression='gzip')
-if not isinstance(molecule, MoleculeContainer):
-    raise plpy.DataException('MoleculeContainer required')
+reaction = loads(data, compression='gzip')
+if not isinstance(reaction, ReactionContainer):
+    raise plpy.DataException('ReactionContainer required')
 
-sg = bytes(molecule).hex()
+cgr = ~reaction
+sg = bytes(cgr).hex()
 
-get_cache = f'''SELECT x.id, array_length(x.molecules, 1) as count
-FROM "{schema}"."MoleculeSearchCache" x
+get_cache = f'''SELECT x.id, array_length(x.reactions, 1) as count
+FROM "{schema}"."ReactionSearchCache" x
 WHERE x.operator = 'similar' AND x.signature = '\\x{sg}'::bytea'''
 
 # test for existing cache
@@ -40,21 +41,21 @@ if found:
     return found[0]
 
 # cache not found. lets start searching
-fp = GD['cgrdb_mfp'].transform_bitset([molecule])[0]
+fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
 
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.molecule AS m, smlar(x.fingerprint, ARRAY{fp}::integer[]) AS t
-FROM "{schema}"."MoleculeStructure" x
+SELECT x.reaction AS r, smlar(x.fingerprint, ARRAY{fp}::integer[]) AS t
+FROM "{schema}"."ReactionIndex" x
 WHERE x.fingerprint % ARRAY{fp}::integer[]''')
 
 # check for empty results
 if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
-"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
+"{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, 0 as count''')
+RETURNING id, 0 AS count''')
 
     # concurrent process stored same query. just reuse it
     if not found:
@@ -63,19 +64,19 @@ RETURNING id, 0 as count''')
 
 # store found molecules to cache
 found = plpy.execute(f'''INSERT INTO
-"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
-SELECT '\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, array_agg(o.m), array_agg(o.t)
+"{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
+SELECT '\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
 FROM (
-    SELECT h.m, h.t
+    SELECT h.r, h.t
     FROM (
-        SELECT DISTINCT ON (f.m) m, f.t
+        SELECT DISTINCT ON (f.r) r, f.t
         FROM cgrdb_query f
-        ORDER BY f.m, f.t DESC
+        ORDER BY f.r, f.t DESC
     ) h
     ORDER BY h.t DESC
 ) o
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) as count''')
+RETURNING id, array_length(reactions, 1) AS count''')
 
 # concurrent process stored same query. just reuse it
 if not found:

@@ -211,7 +211,7 @@ class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     operator = Required(str)
     date = Required(datetime, default=datetime.utcnow)
     _reactions = Required(IntArray, optimistic=False, index=False, column='reactions', lazy=True)
-    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True)
+    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True, sql_type='real[]')
     composite_key(signature, operator)
 
 

@@ -55,10 +55,10 @@ def create_core(args):
         db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
         # db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
-        db.execute('ALTER TABLE "%s"."Reaction" DROP COLUMN structure' % schema)
-        db.execute('ALTER TABLE "%s"."Reaction" RENAME TO "ReactionRecord"' % schema)
-        db.execute('CREATE VIEW "%s"."Reaction" AS SELECT id, NULL::bytea as structure'
-                   ' FROM "%s"."ReactionRecord"' % (schema, schema))
+        db.execute(f'ALTER TABLE "{schema}"."Reaction" DROP COLUMN structure')
+        db.execute(f'ALTER TABLE "{schema}"."Reaction" RENAME TO "ReactionRecord"')
+        db.execute(f'CREATE VIEW "{schema}"."Reaction" AS SELECT id, NULL::bytea as structure'
+                   f' FROM "{schema}"."ReactionRecord"')
 
     with db_session:
         # db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON "{schema}"."MoleculeStructure" USING '
@@ -76,13 +76,15 @@ def create_core(args):
         # db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
         #            f'DELETE FROM "{schema}"."ReactionSearchCache"'
         #            " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
+
         db.execute(setup_fingerprint.replace('{schema}', schema))
         db.execute(insert_molecule.replace('{schema}', schema))
         db.execute(insert_molecule_trigger.replace('{schema}', schema))
-        db.execute(search_similar_molecules.replace('{schema}', schema))
-        db.execute(search_substructure_molecule.replace('{schema}', schema))
         db.execute(insert_reaction.replace('{schema}', schema))
         db.execute(insert_reaction_trigger.replace('{schema}', schema))
+        db.execute(search_similar_molecules.replace('{schema}', schema))
+        db.execute(search_substructure_molecule.replace('{schema}', schema))
+        db.execute(search_similar_reactions.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)

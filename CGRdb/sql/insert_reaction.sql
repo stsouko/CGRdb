@@ -44,7 +44,7 @@ while True:
         SELECT y.molecule
         FROM "{schema}"."MoleculeStructure" y
         WHERE y.signature IN (%s)
-    )''' % ', '.join("'\\x%s'::bytea" % bytes(c).hex() for c in chain(reaction.reactants, reaction.products))
+    )''' % ', '.join(f"'\\x{bytes(c).hex()}'::bytea" for c in chain(reaction.reactants, reaction.products))
     for row in plpy.execute(load):
         sg = row['signature']
         sg2m[sg] = mi = row['molecule']
@@ -64,7 +64,7 @@ while True:
                 mis = [x['id'] for x in plpy.execute('INSERT INTO "{schema}"."Molecule" (id) VALUES %s RETURNING id' % \
                        ', '.join(['(DEFAULT)'] * len(new)))]
                 insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule, is_canonic) VALUES %s RETURNING id' % \
-                         ', '.join("('\\x%s'::bytea, %d, True)" % (dumps(s, compression='gzip').hex(), m)
+                         ', '.join(f"('\\x{dumps(s, compression='gzip').hex()}'::bytea, {m}, True)"
                                    for m, s in zip(mis, new.values()))
                 sis = [x['id'] for x in plpy.execute(insert)]
         except plpy.SPIError:
@@ -92,7 +92,7 @@ for c, is_p in chain(zip(reaction.reactants, repeat(False)), zip(reaction.produc
         mp = next(sg2c[sg].get_mapping(c, automorphism_filter=False))
         plain_reaction.append([(m.remap(mp, copy=True), si) for m, si in zip(m2c[mi], m2ms[mi])])
         mp = [[k, v] for k, v in mp.items() if k != v]
-        mapping.append((mi, is_p, mp and "'%s'" % mp or 'NULL'))
+        mapping.append((mi, is_p, mp and f"'{mp}'" or 'NULL'))
 
 lr = len(reaction.reactants)
 cgrs = []
@@ -103,16 +103,16 @@ for r in product(*plain_reaction):
     cgrs.append(c)
     sis.append(list({si for _, si in r}))
     sgs.append(bytes(c).hex())  # preload signature
-fps = rfp._transform_bitset(cgrs)
+fps = rfp.transform_bitset(cgrs)
 
 # store in db
 ri = plpy.execute('INSERT INTO "{schema}"."ReactionRecord" DEFAULT VALUES RETURNING id')[0]['id']
 plpy.execute('INSERT INTO "{schema}"."ReactionIndex" (reaction, signature, fingerprint, structures) VALUES %s' %
-             ', '.join("(%d, '\\x%s'::bytea, ARRAY%s, ARRAY%s)" % (ri, sg, fp, si)
+             ', '.join(f"({ri}, '\\x{sg}'::bytea, ARRAY{fp}::integer[], ARRAY{si}::integer[])"
                        for sg, fp, si in zip(sgs, fps, sis)))
 
 plpy.execute('INSERT INTO "{schema}"."MoleculeReaction" (reaction, molecule, is_product, mapping) VALUES %s' %
-             ', '.join("(%d, %d, %s, %s)" % (ri, mi, is_p, mp) for mi, is_p, mp in mapping))
+             ', '.join(f"({ri}, {mi}, {is_p}, {mp})" for mi, is_p, mp in mapping))
 data['id'] = ri
 
 return 'MODIFY'

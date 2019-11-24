@@ -144,7 +144,7 @@ class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     operator = Required(str)
     date = Required(datetime, default=datetime.utcnow)
     _molecules = Required(IntArray, optimistic=False, index=False, column='molecules', lazy=True)
-    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True)
+    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True, sql_type='real[]')
     composite_key(signature, operator)
 
     def molecules(self, page=1, pagesize=100):

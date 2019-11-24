@@ -39,31 +39,30 @@ else:
 sg = bytes(molecule).hex()
 # test for existing cache
 
-get_cache = '''SELECT x.id, array_length(x.molecules, 1) as count
+get_cache = f'''SELECT x.id, array_length(x.molecules, 1) as count
 FROM "{schema}"."MoleculeSearchCache" x
-WHERE x.operator = 'substructure' AND x.signature = '\\x{sg}'::bytea'''.replace('{sg}', sg)
+WHERE x.operator = 'substructure' AND x.signature = '\\x{sg}'::bytea'''
 
 found = plpy.execute(get_cache)
 if found:
     return found[0]
 
 # cache not found. lets start searching
-fp = GD['cgrdb_mfp']._transform_bitset([screen])[0]
+fp = GD['cgrdb_mfp'].transform_bitset([screen])[0]
 
-plpy.execute('CREATE TEMPORARY TABLE cgrdb_query(m integer, s integer, t double precision) ON COMMIT DROP')
-plpy.execute('''INSERT INTO cgrdb_query(m, s, t)
-SELECT x.molecule, x.id, smlar(x.fingerprint, ARRAY{fp})
+plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+SELECT x.molecule AS m, x.id AS s, smlar(x.fingerprint, ARRAY{fp}::integer[]) AS t
 FROM "{schema}"."MoleculeStructure" x
-WHERE x.fingerprint @> ARRAY{fp}'''.replace('{fp}', str(fp)))
+WHERE x.fingerprint @> ARRAY{fp}::integer[]''')
 
 # check for empty results
 if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
     # store empty cache
-    found = plpy.execute('''INSERT INTO
+    found = plpy.execute(f'''INSERT INTO
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::double precision[])
+VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, 0 as count'''.replace('{sg}', sg))
+RETURNING id, 0 as count''')
 
     # concurrent process stored same query. just reuse it
     if not found:
@@ -87,11 +86,11 @@ for row in plpy.cursor(get_data):
 plpy.execute('DROP TABLE cgrdb_query')
 
 # store found molecules to cache
-found = plpy.execute('''INSERT INTO
+found = plpy.execute(f'''INSERT INTO
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mi}::integer[], ARRAY{st}::double precision[])
+VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mis}::integer[], ARRAY{sts}::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) as count'''.format(sg=sg, mi=mis, st=sts))
+RETURNING id, array_length(molecules, 1) as count''')
 
 # concurrent process stored same query. just reuse it
 if not found:
