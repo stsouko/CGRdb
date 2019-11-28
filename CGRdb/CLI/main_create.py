@@ -54,28 +54,27 @@ def create_core(args):
     with db_session:
         db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
-        # db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
+        db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
         db.execute(f'ALTER TABLE "{schema}"."Reaction" DROP COLUMN structure')
         db.execute(f'ALTER TABLE "{schema}"."Reaction" RENAME TO "ReactionRecord"')
         db.execute(f'CREATE VIEW "{schema}"."Reaction" AS SELECT id, NULL::bytea as structure'
                    f' FROM "{schema}"."ReactionRecord"')
 
-    with db_session:
-        # db.execute(f'CREATE INDEX idx_smlar_molecule_structure ON "{schema}"."MoleculeStructure" USING '
-        #            'GIST (bit_array _int4_sml_ops)')
-        # db.execute(f'CREATE INDEX idx_subst_molecule_structure ON "{schema}"."MoleculeStructure" USING '
-        #            'GIN (bit_array gin__int_ops)')
-        # db.execute(f'CREATE INDEX idx_smlar_reaction_index ON "{schema}"."ReactionIndex" USING '
-        #            'GIST (bit_array _int4_sml_ops)')
-        # db.execute(f'CREATE INDEX idx_subst_reaction_index ON "{schema}"."ReactionIndex" USING '
-        #            'GIN (bit_array gin__int_ops)')
+        db.execute(f'CREATE INDEX idx_moleculestructure__smlar ON "{schema}"."MoleculeStructure" USING '
+                   'GIST (fingerprint _int4_sml_ops)')
+        db.execute(f'CREATE INDEX idx_moleculestructure__subst ON "{schema}"."MoleculeStructure" USING '
+                   'GIN (fingerprint gin__int_ops)')
+        db.execute(f'CREATE INDEX idx_reactionindex__smlar ON "{schema}"."ReactionIndex" USING '
+                   'GIST (fingerprint _int4_sml_ops)')
+        db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
+                   'GIN (fingerprint gin__int_ops)')
 
-        # db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
-        #            f'DELETE FROM "{schema}"."MoleculeSearchCache"'
-        #            " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
-        # db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$\n"
-        #            f'DELETE FROM "{schema}"."ReactionSearchCache"'
-        #            " WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
+        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$"
+                   f'DELETE FROM "{schema}"."MoleculeSearchCache" '
+                   "WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
+        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$"
+                   f'DELETE FROM "{schema}"."ReactionSearchCache" '
+                   "WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
 
         db.execute(setup_fingerprint.replace('{schema}', schema))
         db.execute(insert_molecule.replace('{schema}', schema))
@@ -85,6 +84,7 @@ def create_core(args):
         db.execute(search_similar_molecules.replace('{schema}', schema))
         db.execute(search_substructure_molecule.replace('{schema}', schema))
         db.execute(search_similar_reactions.replace('{schema}', schema))
+        db.execute(search_substructure_reaction.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)
