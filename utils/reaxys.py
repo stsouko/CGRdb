@@ -21,7 +21,7 @@
 #
 from abc import ABC, abstractmethod
 from CGRtools.containers import MoleculeContainer, ReactionContainer
-from CGRtools.files import SDFwrite, RDFwrite, RDFread
+from CGRtools.files import SDFWrite, RDFWrite, RDFRead
 from CGRtools.files.MRVrw import xml_dict
 from io import StringIO
 from logging import debug
@@ -137,14 +137,14 @@ class ReaxysAPI:
 
     def __mol2query(self, mol, kw):
         x = self.__add_query(self._mol_acc, kw)
-        with StringIO() as b, SDFwrite(b) as w:
+        with StringIO() as b, SDFWrite(b) as w:
             w.write(mol)
             txt = b.getvalue()[:-5]
         return f"structure('{txt}','{','.join(x)}')"
 
     def __rxn2query(self, rxn, kw):
         x = self.__add_query(self._rxn_acc, kw)
-        with StringIO() as b, RDFwrite(b) as w:
+        with StringIO() as b, RDFWrite(b) as w:
             w.write(rxn)
             txt = b.getvalue()
         return f"structure('{txt}','{','.join(x)}')"
@@ -185,15 +185,16 @@ class Results(ABC):
         payloads = self.__payload_generator(first_item, last_item)
         futures = []
 
-        with FuturesSession(session=self.__api._session, max_workers=10) as session:
+        workers = self.__api._workers
+        with FuturesSession(session=self.__api._session, max_workers=workers) as session:
             for payload in payloads:
                 futures.append(session.post(self.__api._url, payload, background_callback=self._parser))
-                if len(futures) == 10:
+                if len(futures) == workers:
                     break
 
             while futures:
                 if self.__without_trash:
-                    data = (x for x in futures[0].result().data if x.reagents and x.products)
+                    data = (x for x in futures[0].result().data if x.reactants and x.products)
                 else:
                     data = futures[0].result().data
 
@@ -338,7 +339,7 @@ class ReactionParser:
 
     @staticmethod
     def __ry_parser(data):
-        with StringIO(data) as f, RDFread(f) as r:
+        with StringIO(data) as f, RDFRead(f) as r:
             return next(r)
 
     def __rxd_parser(self, data):
@@ -429,11 +430,11 @@ class ReactionParser:
         if 'RXD02' in data:
             val = cls.__media_parser(data['RXD02'], 'RXD.SRCT')
             if val:
-                res['stage_reactants'] = val
+                res['reactants'] = val
         if 'RXD03' in data:
             val = cls.__media_parser(data['RXD03'], 'RXD.RGT')
             if val:
-                res['reactants'] = val
+                res['reagents'] = val
         if 'RXD05' in data:
             val = cls.__media_parser(data['RXD05'], 'RXD.SOL')
             if val:
