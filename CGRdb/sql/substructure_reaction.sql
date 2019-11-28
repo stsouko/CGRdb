@@ -65,8 +65,8 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
 """
 explain analyse SELECT ri.reaction as r,
                        array_agg(ms.id) as s, array_agg(ms.molecule) as m, array_agg(ms.structure) as d
-FROM test."ReactionIndex" ri, test."MoleculeStructure" ms
-WHERE ri.id IN (14) AND ms.id = ANY(ri.structures)
+FROM test."ReactionIndex" ri LEFT JOIN test."MoleculeStructure" ms ON ms.id = ANY(ri.structures)
+WHERE ri.id IN (14)
 GROUP BY ri.reaction;
 
 explain analyse SELECT ri.reaction as r, array_agg(mr.mapping) as mapping, array_agg(mr.molecule) as molecules
