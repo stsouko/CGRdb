@@ -25,6 +25,7 @@ from CGRtools.containers import ReactionContainer
 from collections import defaultdict
 from compress_pickle import loads
 from functools import lru_cache
+from json import loads as json_loads
 from itertools import product
 
 reaction = loads(data, compression='gzip')
@@ -79,14 +80,16 @@ get_ms = '''SELECT array_agg(ms.molecule) AS m, array_agg(ms.id) AS s, array_agg
 FROM cgrdb_filtered f LEFT JOIN "{schema}"."MoleculeStructure" ms ON ms.id = ANY(f.s)
 GROUP BY f.r'''
 
-get_mp = '''SELECT f.r, f.t, array_agg(mr.molecule) AS m, array_agg(mr.mapping) AS d, array_agg(mr.is_product) AS p
+get_mp = '''SELECT array_agg(mr.molecule) AS m, array_agg(mr.mapping) AS d, array_agg(mr.is_product) AS p
 FROM cgrdb_filtered f LEFT JOIN "{schema}"."MoleculeReaction" AS mr ON f.r = mr.reaction
 GROUP BY f.r'''
+
+get_rt = 'SELECT f.r, f.t FROM cgrdb_filtered f'
 
 cache_size = GD.get('cache_size', 128)
 cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
 ris, rts = [], []
-for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
+for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy.cursor(get_rt)):
     m2s = defaultdict(list)  # load structures of molecules
     for mi, si, s in zip(ms_row['m'], ms_row['s'], ms_row['d']):
         m2s[mi].append(cache(si))
@@ -94,7 +97,7 @@ for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
     rct = []
     prd = []
     for mi, mp, is_p in zip(mp_row['m'], mp_row['d'], mp_row['p']):
-        ms = [x.remap(dict(mp), copy=True) for x in m2s[mi]] if mp else m2s[mi]
+        ms = [x.remap(dict(json_loads(mp)), copy=True) for x in m2s[mi]] if mp else m2s[mi]
         if is_p:
             prd.append(ms)
         else:
@@ -102,8 +105,8 @@ for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
 
     lr = len(rct)
     if any(cgr <= ~ReactionContainer(ms[:lr], ms[lr:]) for ms in product(*rct, *prd)):
-        ris.append(mp_row['r'])
-        rts.append(mp_row['t'])
+        ris.append(rt_row['r'])
+        rts.append(rt_row['t'])
 
 # store found molecules to cache
 found = plpy.execute(f'''INSERT INTO

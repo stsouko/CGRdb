@@ -20,15 +20,14 @@
 #  MA 02110-1301, USA.
 #
 from CachedMethods import cached_property
-from CGRtools.containers import MoleculeContainer
+from CGRtools.containers import MoleculeContainer, QueryContainer
 from compress_pickle import dumps, loads
 from datetime import datetime
 from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
-from ..search import SearchMolecule
 
 
-class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
+class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     _structures = Set('MoleculeStructure')
     _reactions = Set('MoleculeReaction')
@@ -76,6 +75,71 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         """
         return [x.structure for x in self.reactions_entities(page, pagesize, product)]
 
+    @classmethod
+    def structure_exists(cls, structure):
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        return cls._database_.MoleculeStructure.exists(signature=bytes(structure))
+
+    @classmethod
+    def find_structure(cls, structure):
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        ms = cls._database_.MoleculeStructure.get(signature=bytes(structure))
+        if ms:
+            molecule = ms.molecule
+            if ms.is_canonic:  # save if structure is canonical
+                molecule.__dict__['structure_entity'] = ms
+            return molecule
+
+    @classmethod
+    def find_substructures(cls, structure):
+        """
+        substructure search
+
+        substructure search is 2-step process. first step is screening procedure. next step is isomorphism testing.
+
+        :param structure: CGRtools MoleculeContainer or QueryContainer
+        :return: MoleculeSearchCache object with all found molecules or None
+        """
+        if not isinstance(structure, (MoleculeContainer, QueryContainer)):
+            raise TypeError('Molecule or Query expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        structure = dumps(structure, compression='gzip').hex()
+        ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_substructure_molecules('\\x{structure}'::bytea)")[0]
+        if fnd:
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_similar(cls, structure):
+        """
+        similarity search
+
+        :param structure: CGRtools MoleculeContainer
+        :return: MoleculeSearchCache object with all found molecules or None
+        """
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        structure = dumps(structure, compression='gzip').hex()
+        ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_similar_molecules('\\x{structure}'::bytea)")[0]
+        if fnd:
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
     @cached_property
     def structure_entity(self):
         """
@@ -93,7 +157,7 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
             self.__dict__['structure_entity'] = next(x for x in s if x.is_canonic)
         return s
 
-    def reactions_entities(self, page=1, pagesize=100, product=None, set_all=False):
+    def reactions_entities(self, page=1, pagesize=100, product=None):
         """
         list of reactions entities including this molecule. chunks-separated for memory saving
 
@@ -101,7 +165,6 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         :param pagesize: maximum number of reactions in list
         :param product: if True - reactions including this molecule in product side returned.
         if None any reactions including this molecule.
-        :param set_all: preload all structure combinations
         :return: list of reaction entities
         """
         q = left_join(x.reaction for x in self._database_.MoleculeReaction
@@ -112,10 +175,7 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         reactions = q.page(page, pagesize)
         if not reactions:
             return []
-        if set_all:
-            self._database_.Reaction.prefetch_structures(reactions)
-        else:
-            self._database_.Reaction.prefetch_structure(reactions)
+        self._database_.Reaction.prefetch_structure(reactions)
         return list(reactions)
 
 
