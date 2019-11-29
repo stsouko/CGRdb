@@ -83,8 +83,6 @@ for row in plpy.cursor(get_data):
         mis.append(row['m'])
         sts.append(row['t'])
 
-plpy.execute('DROP TABLE cgrdb_query')
-
 # store found molecules to cache
 found = plpy.execute(f'''INSERT INTO
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)

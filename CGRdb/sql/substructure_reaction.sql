@@ -22,6 +22,7 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_substructure_reactions(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import ReactionContainer
+from collections import defaultdict
 from compress_pickle import loads
 
 reaction = loads(data, compression='gzip')
@@ -53,7 +54,7 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
     "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-    VALUES ('\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
+    VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
     ON CONFLICT DO NOTHING
     RETURNING id, 0 AS count''')
 
@@ -62,41 +63,48 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
         found = plpy.execute(get_cache)
     return found[0]
 
-"""
-explain analyse SELECT ri.reaction as r,
-                       array_agg(ms.id) as s, array_agg(ms.molecule) as m, array_agg(ms.structure) as d
-FROM test."ReactionIndex" ri LEFT JOIN test."MoleculeStructure" ms ON ms.id = ANY(ri.structures)
-WHERE ri.id IN (14)
-GROUP BY ri.reaction;
-
-explain analyse SELECT ri.reaction as r, array_agg(mr.mapping) as mapping, array_agg(mr.molecule) as molecules
-FROM test."ReactionIndex" ri LEFT JOIN test."MoleculeReaction" as mr ON ri.reaction = mr.reaction
-WHERE ri.id IN (14)
-GROUP BY ri.reaction;
-"""
-# get most similar structure for each molecule
-get_data = '''SELECT h.r, h.t, s.structure as d
+# filter by unique reactions
+plpy.execute('''CREATE TEMPORARY TABLE cgrdb_filtered ON COMMIT DROP AS
+SELECT h.r, h.s, h.t
 FROM (
     SELECT DISTINCT ON (f.r) r, f.s, f.t
     FROM cgrdb_query f
     ORDER BY f.r, f.t DESC
-) h LEFT JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id
-ORDER BY h.t DESC'''
+) h
+ORDER BY h.t DESC''')
 
-mis, sts = [], []
-for row in plpy.cursor(get_data):
-    if reaction <= loads(row['d'], compression='gzip'):
-        mis.append(row['m'])
-        sts.append(row['t'])
+get_ms = '''SELECT f.r, array_agg(ms.molecule) as m, array_agg(ms.id) as s, array_agg(ms.structure) as d
+FROM cgrdb_filtered f LEFT JOIN "{schema}"."MoleculeStructure" ms ON ms.id = ANY(f.s)
+GROUP BY f.r'''
 
-plpy.execute('DROP TABLE cgrdb_query')
+get_mp = '''SELECT f.r, array_agg(mr.molecule) as m, array_agg(mr.mapping) as d
+FROM cgrdb_filtered f LEFT JOIN "{schema}"."MoleculeReaction" as mr ON f.r = mr.reaction
+GROUP BY f.r'''
+
+cache_size = GD.get('cache_size', 100)
+s_cache = {}
+s_order = []
+ris, rts = [], []
+for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
+    ri = ms_row['r']
+    m2s = defaultdict(list)
+
+    for si, s in zip(ms_row['s'], ms_row['d']):  # load MoleculeContainer's into cache
+        if si not in s_cache:
+            s_cache[si] = loads(s, compression='gzip')
+            if len(s_order) > cache_size:
+                del s_cache[s_order.pop(0)]
+            s_order.append(si)
+    for mi, si in zip(ms_row['m'], ms_row['s']):
+        m2s[mi].append(s_cache[si])
+
 
 # store found molecules to cache
 found = plpy.execute(f'''INSERT INTO
-"{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mis}::integer[], ARRAY{sts}::real[])
+"{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
+VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{ris}::integer[], ARRAY{rts}::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) as count''')
+RETURNING id, array_length(reactions, 1) as count''')
 
 # concurrent process stored same query. just reuse it
 if not found:
