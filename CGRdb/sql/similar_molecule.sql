@@ -30,7 +30,7 @@ if not isinstance(molecule, MoleculeContainer):
 
 sg = bytes(molecule).hex()
 
-get_cache = f'''SELECT x.id, array_length(x.molecules, 1) as count
+get_cache = f'''SELECT x.id, array_length(x.molecules, 1) AS count
 FROM "{schema}"."MoleculeSearchCache" x
 WHERE x.operator = 'similar' AND x.signature = '\\x{sg}'::bytea'''
 
@@ -54,7 +54,7 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, 0 as count''')
+RETURNING id, 0 AS count''')
 
     # concurrent process stored same query. just reuse it
     if not found:
@@ -75,7 +75,7 @@ FROM (
     ORDER BY h.t DESC
 ) o
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) as count''')
+RETURNING id, array_length(molecules, 1) AS count''')
 
 # concurrent process stored same query. just reuse it
 if not found:

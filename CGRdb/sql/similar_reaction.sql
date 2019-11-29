@@ -31,7 +31,7 @@ if not isinstance(reaction, ReactionContainer):
 cgr = ~reaction
 sg = bytes(cgr).hex()
 
-get_cache = f'''SELECT x.id, array_length(x.reactions, 1) as count
+get_cache = f'''SELECT x.id, array_length(x.reactions, 1) AS count
 FROM "{schema}"."ReactionSearchCache" x
 WHERE x.operator = 'similar' AND x.signature = '\\x{sg}'::bytea'''
 

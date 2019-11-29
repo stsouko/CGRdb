@@ -39,7 +39,7 @@ else:
 sg = bytes(molecule).hex()
 # test for existing cache
 
-get_cache = f'''SELECT x.id, array_length(x.molecules, 1) as count
+get_cache = f'''SELECT x.id, array_length(x.molecules, 1) AS count
 FROM "{schema}"."MoleculeSearchCache" x
 WHERE x.operator = 'substructure' AND x.signature = '\\x{sg}'::bytea'''
 
@@ -62,7 +62,7 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, 0 as count''')
+RETURNING id, 0 AS count''')
 
     # concurrent process stored same query. just reuse it
     if not found:
@@ -70,7 +70,7 @@ RETURNING id, 0 as count''')
     return found[0]
 
 # get most similar structure for each molecule
-get_data = '''SELECT h.m, h.t, s.structure as d
+get_data = '''SELECT h.m, h.t, s.structure AS d
 FROM (
     SELECT DISTINCT ON (f.m) m, f.s, f.t
     FROM cgrdb_query f
@@ -88,7 +88,7 @@ found = plpy.execute(f'''INSERT INTO
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mis}::integer[], ARRAY{sts}::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) as count''')
+RETURNING id, array_length(molecules, 1) AS count''')
 
 # concurrent process stored same query. just reuse it
 if not found:
