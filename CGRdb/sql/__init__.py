@@ -44,6 +44,19 @@ GD['cgrdb_rfp'] = FragmentorFingerprint(**reaction)
 
 $$ LANGUAGE plpython3u'''.replace('$', '$$')
 
+delete_molecule = '''CREATE OR REPLACE FUNCTION "{schema}".cgrdb_delete_molecule_structure()
+RETURNS TRIGGER
+AS $$
+BEGIN
+    DELETE FROM "{schema}"."ReactionIndex" ri WHERE OLD.id = ANY(ri.structures);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql'''
+
+delete_molecule_trigger = '''CREATE TRIGGER cgrdb_delete_molecule_structure
+    AFTER DELETE ON "{schema}"."MoleculeStructure" FOR EACH ROW
+    EXECUTE PROCEDURE "{schema}".cgrdb_delete_molecule_structure()'''
+
 
 def load_sql(file):
     return ''.join(x for x in TextIOWrapper(resource_stream('CGRdb.sql', file))
