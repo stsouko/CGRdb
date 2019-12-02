@@ -23,7 +23,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-version = '3.1.1'
+version = '4.0.0'
 
 
 setup(
@@ -34,10 +34,10 @@ setup(
     license='AGPLv3',
     author='Dr. Ramil Nugmanov',
     author_email='stsouko@live.ru',
-    python_requires='>=3.7.0',
+    python_requires='>=3.6.0',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=3.1.2,<3.2', 'CIMtools>=3.1.0,<3.2', 'LazyPony>=0.2,<0.3',
-                      'CachedMethods>=0.1.0,<0.2', 'pony'],
+    install_requires=['CGRtools>=4.0.14,<4.1', 'CIMtools>=4.0.1,<4.1', 'LazyPony>=0.2.1,<0.3',
+                      'CachedMethods>=0.1.4,<0.2', 'pony>=0.7.11,<0.8'],
     extras_require={'postgres':  ['psycopg2-binary'],
                     'postgres_cffi':  ['cffi', 'psycopg2cffi'],
                     'autocomplete': ['argcomplete']},
@@ -51,6 +51,6 @@ setup(
                  'Operating System :: OS Independent',
                  'Programming Language :: Python',
                  'Programming Language :: Python :: 3',
-                 'Programming Language :: Python :: 3.7',
+                 'Programming Language :: Python :: 3.6',
                  ]
 )

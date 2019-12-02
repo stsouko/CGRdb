@@ -30,7 +30,7 @@ def create_core(args):
     major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
     schema = args.name
     config = args.config and load(args.config) or {}
-    if 'packages' not in config:  # by default CGRdbUser package used for User entity
+    if 'packages' not in config:
         config['packages'] = []
     for p in config['packages']:  # check availability of extra packages
         p = get_distribution(p)
@@ -52,13 +52,10 @@ def create_core(args):
     db.generate_mapping(create_tables=True)
 
     with db_session:
-        db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
-        db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
-        db.execute('CREATE EXTENSION IF NOT EXISTS pg_cron')
         db.execute(f'ALTER TABLE "{schema}"."Reaction" DROP COLUMN structure')
         db.execute(f'ALTER TABLE "{schema}"."Reaction" RENAME TO "ReactionRecord"')
-        db.execute(f'CREATE VIEW "{schema}"."Reaction" AS SELECT id, NULL::bytea as structure'
-                   f' FROM "{schema}"."ReactionRecord"')
+        db.execute(f'CREATE VIEW "{schema}"."Reaction" AS SELECT id, NULL::bytea as structure '
+                   f'FROM "{schema}"."ReactionRecord"')
 
         db.execute(f'CREATE INDEX idx_moleculestructure__smlar ON "{schema}"."MoleculeStructure" USING '
                    'GIST (fingerprint _int4_sml_ops)')
@@ -68,13 +65,6 @@ def create_core(args):
                    'GIST (fingerprint _int4_sml_ops)')
         db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
                    'GIN (fingerprint gin__int_ops)')
-
-        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$"
-                   f'DELETE FROM "{schema}"."MoleculeSearchCache" '
-                   "WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
-        db.execute(f"SELECT cron.schedule('0 3 * * *', $$$$"
-                   f'DELETE FROM "{schema}"."ReactionSearchCache" '
-                   "WHERE date < CURRENT_TIMESTAMP - INTERVAL '1 day' $$$$)")
 
         db.execute(setup_fingerprint.replace('{schema}', schema))
         db.execute(insert_molecule.replace('{schema}', schema))

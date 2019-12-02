@@ -51,7 +51,7 @@ BEGIN
     DELETE FROM "{schema}"."ReactionIndex" ri WHERE OLD.id = ANY(ri.structures);
     RETURN NULL;
 END;
-$$ LANGUAGE plpgsql'''
+$$ LANGUAGE plpgsql'''.replace('$', '$$')
 
 delete_molecule_trigger = '''CREATE TRIGGER cgrdb_delete_molecule_structure
     AFTER DELETE ON "{schema}"."MoleculeStructure" FOR EACH ROW

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2018 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2018, 2019 Ramil Nugmanov <stsouko@live.ru>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 #  MA 02110-1301, USA.
 #
 from LazyPony import LazyEntityMeta
-from pony.orm import Database
+from pony.orm import Database, db_session
 
 
 def init_core(args):
@@ -27,3 +27,8 @@ def init_core(args):
     LazyEntityMeta.attach(db, database='CGRdb_config')
     db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
     db.generate_mapping(create_tables=True)
+
+    with db_session:
+        db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
+        db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
+        db.execute('CREATE EXTENSION IF NOT EXISTS plpython3u')

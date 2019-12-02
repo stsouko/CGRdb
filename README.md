@@ -9,11 +9,28 @@ or
 
     pip install CGRdb
 
-POSTGRES SETUP
-==============
+initialize CGRdb \[after postgres setup only\]
+
+    cgrdb init -p 'your password' # use -h argument for help printing
+
+POSTGRES SETUP (Ubuntu 18.04 example)
+=====================================
+install  postgresql:
+
+    sudo apt install postgresql postgresql-server-dev-10 postgresql-plpython3-10
+
+edit user: 
+
+    sudo -u postgres psql
+
+and type:
+
+    ALTER USER postgres WITH PASSWORD 'your password';
+    \q
+
 build patched smlar extension:
 
-    git clone https://github.com/SZabirov/smlar.git
+    git clone https://github.com/stsouko/smlar.git
     cd smlar
     sudo su
     export USE_PGXS=1
@@ -21,17 +38,23 @@ build patched smlar extension:
 
 install by checkinstall:
 
+    sudo apt install checkinstall
     checkinstall -D
-    
+
 or
 
     make install
 
-Install and set up pg_cron extension, following the [instruction](https://github.com/citusdata/pg_cron/blob/master/README.md#installing-pg_cron)
+uncomment and change next line in `/etc/postgresql/10/main/postgresql.conf`
 
-CONFIGURE
-=========
-optional
+    deadlock_timeout = 10s
 
-add to environment key CGR_DB with path/to/config.py directory
-edit config.py_example and put it to config directory by name config.py
+restart postgres
+
+    sudo systemctl restart postgresql
+
+install `CGRtools`, `CIMtools` and `compress-pickle` into system
+
+    sudo pip3 install compress-pickle 
+    sudo pip3 install git+https://github.com/cimm-kzn/CGRtools.git@master#egg=CGRtools
+    sudo pip3 install git+https://github.com/stsouko/CIMtools.git@master#egg=CIMtools
