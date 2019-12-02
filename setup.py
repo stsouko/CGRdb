@@ -19,6 +19,7 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
 #  MA 02110-1301, USA.
 #
+from os import listdir
 from pathlib import Path
 from setuptools import setup, find_packages
 
@@ -41,6 +42,7 @@ setup(
     extras_require={'postgres':  ['psycopg2-binary'],
                     'postgres_cffi':  ['cffi', 'psycopg2cffi'],
                     'autocomplete': ['argcomplete']},
+    package_data={'CGRdb.sql': [x for x in listdir(Path(__file__).parent / 'CGRdb' / 'sql') if x.endswith('.sql')]},
     long_description=(Path(__file__).parent / 'README.md').open().read(),
     classifiers=['Environment :: Plugins',
                  'Intended Audience :: Science/Research',
