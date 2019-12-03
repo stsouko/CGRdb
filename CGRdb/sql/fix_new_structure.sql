@@ -29,45 +29,55 @@ from functools import lru_cache
 from json import loads as json_loads
 from itertools import product
 
+get_mp = f'''SELECT x.reaction r, array_agg(x.molecule) m, array_agg(x.mapping) d, array_agg(x.is_product) p
+FROM "{schema}"."MoleculeReaction" x
+WHERE x.reaction IN (
+    SELECT y.reaction
+    FROM "{schema}"."MoleculeReaction" y
+    WHERE y.molecule = {molecule}
+)
+GROUP BY x.reaction'''
 
-# cache not found. lets start searching
-fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
-
-get_mp = f'''SELECT y.reaction AS r, array_agg(y.molecule) AS m, array_agg(y.mapping) AS d, array_agg(y.is_product) AS p
-FROM "cgrdb"."MoleculeReaction" x, "cgrdb"."MoleculeReaction" y
-WHERE x.molecule = 1 AND x.reaction = y.reaction
-GROUP BY y.reaction
-ORDER BY y.reaction'''
-
-get_ms = f'''SELECT mr.reaction AS r, array_agg(x.molecule) AS m, array_agg(x.id) AS s, array_agg(x.structure) AS d
-FROM "cgrdb"."MoleculeStructure" x INNER JOIN (
-    SELECT DISTINCT ON (y.reaction, z.molecule) y.reaction, z.molecule
-    FROM "cgrdb"."MoleculeReaction" y, "cgrdb"."MoleculeReaction" z
-    WHERE y.molecule = 1 AND y.reaction = z.reaction
+get_ms = f'''SELECT mr.reaction r, array_agg(x.molecule) m, array_agg(x.id) s, array_agg(x.structure) d
+FROM "{schema}"."MoleculeStructure" x JOIN (
+    SELECT DISTINCT ON (y.reaction, y.molecule) y.reaction, y.molecule
+    FROM "{schema}"."MoleculeReaction" y
+    WHERE y.reaction IN (
+        SELECT z.reaction
+        FROM "{schema}"."MoleculeReaction" z
+        WHERE z.molecule = {molecule}
+    )
 ) mr ON x.molecule = mr.molecule
-GROUP BY mr.reaction
-ORDER BY mr.reaction'''
+GROUP BY mr.reaction'''
 
 cache_size = GD['cache_size']
 cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
-ris, rts = [], []
-for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy.cursor(get_rt)):
+
+for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
     m2s = defaultdict(list)  # load structures of molecules
     for mi, si, s in zip(ms_row['m'], ms_row['s'], ms_row['d']):
-        m2s[mi].append(cache(si))
+        m2s[mi].append((si, cache(si)))
 
-    rct = []
-    prd = []
+    structures = []
+    lr = 0
     for mi, mp, is_p in zip(mp_row['m'], mp_row['d'], mp_row['p']):
-        ms = [x.remap(dict(json_loads(mp)), copy=True) for x in m2s[mi]] if mp else m2s[mi]
-        if is_p:
-            prd.append(ms)
+        if mp:
+            mp = dict(json_loads(mp))
+            ms = [(si, s.remap(mp, copy=True)) for si, s in m2s[mi]]
         else:
-            rct.append(ms)
+            ms = m2s[mi]
+        structures.append(ms)
+        if not is_p:
+            lr += 1
 
-    lr = len(rct)
-    if any(cgr <= ~ReactionContainer(ms[:lr], ms[lr:]) for ms in product(*rct, *prd)):
-        ris.append(rt_row['r'])
-        rts.append(rt_row['t'])
+    s = [(structure, cache(structure))]
+    for n, mi in enumerate(mp_row['m']):
+        if mi == molecule:
+            tmp = structures.copy()
+            tmp[n] = s
+            for ms in product(*tmp):
+                r = ReactionContainer(ms[:lr], ms[lr:])
 
+# cache not found. lets start searching
+fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
 $$ LANGUAGE plpython3u

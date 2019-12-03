@@ -39,7 +39,7 @@ else:
 sg = bytes(molecule).hex()
 # test for existing cache
 
-get_cache = f'''SELECT x.id, array_length(x.molecules, 1) AS count
+get_cache = f'''SELECT x.id, array_length(x.molecules, 1) count
 FROM "{schema}"."MoleculeSearchCache" x
 WHERE x.operator = 'substructure' AND x.signature = '\\x{sg}'::bytea'''
 
@@ -51,7 +51,7 @@ if found:
 fp = GD['cgrdb_mfp'].transform_bitset([screen])[0]
 
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.molecule AS m, x.id AS s, smlar(x.fingerprint, ARRAY{fp}::integer[]) AS t
+SELECT x.molecule m, x.id s, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
 FROM "{schema}"."MoleculeStructure" x
 WHERE x.fingerprint @> ARRAY{fp}::integer[]''')
 
@@ -62,7 +62,7 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, 0 AS count''')
+RETURNING id, 0 count''')
 
     # concurrent process stored same query. just reuse it
     if not found:
@@ -70,12 +70,12 @@ RETURNING id, 0 AS count''')
     return found[0]
 
 # get most similar structure for each molecule
-get_data = '''SELECT h.m, h.t, s.structure AS d
+get_data = '''SELECT h.m, h.t, s.structure d
 FROM (
     SELECT DISTINCT ON (f.m) m, f.s, f.t
     FROM cgrdb_query f
     ORDER BY f.m, f.t DESC
-) h LEFT JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id
+) h JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id
 ORDER BY h.t DESC'''
 mis, sts = [], []
 for row in plpy.cursor(get_data):
@@ -88,7 +88,7 @@ found = plpy.execute(f'''INSERT INTO
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{mis}::integer[], ARRAY{sts}::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(molecules, 1) AS count''')
+RETURNING id, array_length(molecules, 1) count''')
 
 # concurrent process stored same query. just reuse it
 if not found:

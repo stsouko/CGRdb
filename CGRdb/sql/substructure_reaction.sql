@@ -36,7 +36,7 @@ cgr = ~reaction
 sg = bytes(cgr).hex()
 # test for existing cache
 
-get_cache = f'''SELECT x.id, array_length(x.reactions, 1) AS count
+get_cache = f'''SELECT x.id, array_length(x.reactions, 1) count
 FROM "{schema}"."ReactionSearchCache" x
 WHERE x.operator = 'substructure' AND x.signature = '\\x{sg}'::bytea'''
 
@@ -48,7 +48,7 @@ if found:
 fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
 
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.reaction AS r, x.structures AS s, smlar(x.fingerprint, ARRAY{fp}::integer[]) AS t
+SELECT x.reaction r, x.structures s, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
 FROM "{schema}"."ReactionIndex" x
 WHERE x.fingerprint @> ARRAY{fp}::integer[]''')
 
@@ -59,7 +59,7 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
     "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
     VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
     ON CONFLICT DO NOTHING
-    RETURNING id, 0 AS count''')
+    RETURNING id, 0 count''')
 
     # concurrent process stored same query. just reuse it
     if not found:
@@ -76,12 +76,12 @@ FROM (
 ) h
 ORDER BY h.t DESC''')
 
-get_ms = '''SELECT array_agg(ms.molecule) AS m, array_agg(ms.id) AS s, array_agg(ms.structure) AS d
-FROM cgrdb_filtered f LEFT JOIN "{schema}"."MoleculeStructure" ms ON ms.id = ANY(f.s)
+get_ms = '''SELECT array_agg(ms.molecule) m, array_agg(ms.id) s, array_agg(ms.structure) d
+FROM cgrdb_filtered f JOIN "{schema}"."MoleculeStructure" ms ON ms.id = ANY(f.s)
 GROUP BY f.r'''
 
-get_mp = '''SELECT array_agg(mr.molecule) AS m, array_agg(mr.mapping) AS d, array_agg(mr.is_product) AS p
-FROM cgrdb_filtered f LEFT JOIN "{schema}"."MoleculeReaction" AS mr ON f.r = mr.reaction
+get_mp = '''SELECT array_agg(mr.molecule) m, array_agg(mr.mapping) d, array_agg(mr.is_product) p
+FROM cgrdb_filtered f JOIN "{schema}"."MoleculeReaction" mr ON f.r = mr.reaction
 GROUP BY f.r'''
 
 get_rt = 'SELECT f.r, f.t FROM cgrdb_filtered f'
@@ -94,17 +94,19 @@ for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy
     for mi, si, s in zip(ms_row['m'], ms_row['s'], ms_row['d']):
         m2s[mi].append(cache(si))
 
-    rct = []
-    prd = []
+    structures = []
+    lr = 0
     for mi, mp, is_p in zip(mp_row['m'], mp_row['d'], mp_row['p']):
-        ms = [x.remap(dict(json_loads(mp)), copy=True) for x in m2s[mi]] if mp else m2s[mi]
-        if is_p:
-            prd.append(ms)
+        if mp:
+            mp = dict(json_loads(mp))
+            ms = [x.remap(mp, copy=True) for x in m2s[mi]]
         else:
-            rct.append(ms)
+            ms = m2s[mi]
+        structures.append(ms)
+        if not is_p:
+            lr += 1
 
-    lr = len(rct)
-    if any(cgr <= ~ReactionContainer(ms[:lr], ms[lr:]) for ms in product(*rct, *prd)):
+    if any(cgr <= ~ReactionContainer(ms[:lr], ms[lr:]) for ms in product(*structures)):
         ris.append(rt_row['r'])
         rts.append(rt_row['t'])
 
@@ -113,7 +115,7 @@ found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
 VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY{ris}::integer[], ARRAY{rts}::real[])
 ON CONFLICT DO NOTHING
-RETURNING id, array_length(reactions, 1) AS count''')
+RETURNING id, array_length(reactions, 1) count''')
 
 # concurrent process stored same query. just reuse it
 if not found:
