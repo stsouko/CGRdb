@@ -33,23 +33,20 @@ from itertools import product
 # cache not found. lets start searching
 fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
 
-get_mp = f'''SELECT x.reaction as r, array_agg(x.molecule) AS m, array_agg(x.mapping) AS d, array_agg(x.is_product) AS p
-FROM "{schema}"."MoleculeReaction" AS x
-WHERE x.reaction IN (
-    SELECT y.reaction
-    FROM "{schema}"."MoleculeReaction" y
-    WHERE y.molecule = {molecule}
-)
-GROUP BY x.reaction'''
+get_mp = f'''SELECT y.reaction AS r, array_agg(y.molecule) AS m, array_agg(y.mapping) AS d, array_agg(y.is_product) AS p
+FROM "cgrdb"."MoleculeReaction" x, "cgrdb"."MoleculeReaction" y
+WHERE x.molecule = 1 AND x.reaction = y.reaction
+GROUP BY y.reaction
+ORDER BY y.reaction'''
 
-get_ms = f'''SELECT x.molecule AS m, array_agg(x.id) AS s, array_agg(x.structure) AS d
-FROM "cgrdb"."MoleculeStructure" x
-WHERE x.molecule IN (
-    SELECT z.molecule
-    FROM "{schema}"."MoleculeReaction" y, "cgrdb"."MoleculeReaction" z
-    WHERE y.molecule = {molecule} AND y.reaction = z.reaction
-)
-GROUP BY x.molecule'''
+get_ms = f'''SELECT mr.reaction AS r, array_agg(x.molecule) AS m, array_agg(x.id) AS s, array_agg(x.structure) AS d
+FROM "cgrdb"."MoleculeStructure" x INNER JOIN (
+    SELECT DISTINCT ON (y.reaction, z.molecule) y.reaction, z.molecule
+    FROM "cgrdb"."MoleculeReaction" y, "cgrdb"."MoleculeReaction" z
+    WHERE y.molecule = 1 AND y.reaction = z.reaction
+) mr ON x.molecule = mr.molecule
+GROUP BY mr.reaction
+ORDER BY mr.reaction'''
 
 cache_size = GD['cache_size']
 cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
