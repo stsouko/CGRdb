@@ -86,7 +86,7 @@ GROUP BY f.r'''
 
 get_rt = 'SELECT f.r, f.t FROM cgrdb_filtered f'
 
-cache_size = GD.get('cache_size', 128)
+cache_size = GD['cache_size']
 cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
 ris, rts = [], []
 for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy.cursor(get_rt)):

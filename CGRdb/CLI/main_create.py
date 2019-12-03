@@ -66,7 +66,8 @@ def create_core(args):
         db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
                    'GIN (fingerprint gin__int_ops)')
 
-        db.execute(setup_fingerprint.replace('{schema}', schema))
+        db.execute(init_session.replace('{schema}', schema))
+
         db.execute(insert_molecule.replace('{schema}', schema))
         db.execute(insert_molecule_trigger.replace('{schema}', schema))
         db.execute(insert_reaction.replace('{schema}', schema))
@@ -78,6 +79,8 @@ def create_core(args):
         db.execute(search_substructure_molecule.replace('{schema}', schema))
         db.execute(search_similar_reactions.replace('{schema}', schema))
         db.execute(search_substructure_reaction.replace('{schema}', schema))
+
+        db.execute(fix_new_structure.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)

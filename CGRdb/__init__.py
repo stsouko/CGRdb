@@ -58,7 +58,7 @@ def load_schema(schema, *args, **kwargs):
     db.generate_mapping()
 
     with db_session:
-        db.execute(f'SELECT "{schema}".cgrdb_setup_fingerprint(\'{dumps(config)}\')')
+        db.execute(f'SELECT "{schema}".cgrdb_init_session(\'{dumps(config)}\')')
     return db
 
 

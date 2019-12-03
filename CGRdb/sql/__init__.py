@@ -30,7 +30,7 @@ insert_reaction_trigger = '''CREATE TRIGGER cgrdb_insert_reaction
     INSTEAD OF INSERT ON "{schema}"."Reaction" FOR EACH ROW
     EXECUTE PROCEDURE "{schema}".cgrdb_insert_reaction()'''
 
-setup_fingerprint = '''CREATE OR REPLACE FUNCTION "{schema}".cgrdb_setup_fingerprint(cfg json)
+init_session = '''CREATE OR REPLACE FUNCTION "{schema}".cgrdb_init_session(cfg json)
 RETURNS VOID
 AS $$
 from CIMtools.preprocessing import FragmentorFingerprint
@@ -41,6 +41,7 @@ molecule = config.get('molecule', {})
 reaction = config.get('reaction', {})
 GD['cgrdb_mfp'] = FragmentorFingerprint(**molecule)
 GD['cgrdb_rfp'] = FragmentorFingerprint(**reaction)
+GD['cache_size'] = config.get('cache_size', 128)
 
 $$ LANGUAGE plpython3u'''.replace('$', '$$')
 
@@ -69,3 +70,5 @@ search_substructure_molecule = load_sql('substructure_molecule.sql')
 search_substructure_reaction = load_sql('substructure_reaction.sql')
 search_similar_molecules = load_sql('similar_molecule.sql')
 search_similar_reactions = load_sql('similar_reaction.sql')
+
+fix_new_structure = load_sql('fix_new_structure.sql')
