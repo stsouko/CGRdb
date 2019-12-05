@@ -70,17 +70,18 @@ def create_core(args):
 
         db.execute(insert_molecule.replace('{schema}', schema))
         db.execute(insert_molecule_trigger.replace('{schema}', schema))
-        db.execute(insert_reaction.replace('{schema}', schema))
-        db.execute(insert_reaction_trigger.replace('{schema}', schema))
+        db.execute(after_insert_molecule.replace('{schema}', schema))
+        db.execute(after_insert_molecule_trigger.replace('{schema}', schema))
         db.execute(delete_molecule.replace('{schema}', schema))
         db.execute(delete_molecule_trigger.replace('{schema}', schema))
+
+        db.execute(insert_reaction.replace('{schema}', schema))
+        db.execute(insert_reaction_trigger.replace('{schema}', schema))
 
         db.execute(search_similar_molecules.replace('{schema}', schema))
         db.execute(search_substructure_molecule.replace('{schema}', schema))
         db.execute(search_similar_reactions.replace('{schema}', schema))
         db.execute(search_substructure_reaction.replace('{schema}', schema))
-
-        db.execute(fix_new_structure.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)

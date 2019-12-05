@@ -19,8 +19,8 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_fix_new_structure(structure integer)
-RETURNS VOID
+"{schema}".cgrdb_after_insert_molecule_structure()
+RETURNS TRIGGER
 AS $$
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
@@ -29,7 +29,12 @@ from functools import lru_cache
 from json import loads as json_loads
 from itertools import product
 
-molecule = plpy.execute(f'SELECT x.molecule FROM "{schema}"."MoleculeStructure" x WHERE x.id = {structure}')[0]['molecule']
+data = TD['new']
+if data['is_canonic']:
+    return
+
+molecule = data['molecule']
+structure = data['id']
 
 get_mp = f'''SELECT x.reaction r, array_agg(x.molecule) m, array_agg(x.mapping) d, array_agg(x.is_product) p
 FROM "{schema}"."MoleculeReaction" x

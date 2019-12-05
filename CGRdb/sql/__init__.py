@@ -26,6 +26,10 @@ insert_molecule_trigger = '''CREATE TRIGGER cgrdb_insert_molecule_structure
     BEFORE INSERT ON "{schema}"."MoleculeStructure" FOR EACH ROW
     EXECUTE PROCEDURE "{schema}".cgrdb_insert_molecule_structure()'''
 
+after_insert_molecule_trigger = '''CREATE TRIGGER cgrdb_after_insert_molecule_structure
+    AFTER INSERT ON "{schema}"."MoleculeStructure" FOR EACH ROW
+    EXECUTE PROCEDURE "{schema}".cgrdb_after_insert_molecule_structure()'''
+
 insert_reaction_trigger = '''CREATE TRIGGER cgrdb_insert_reaction
     INSTEAD OF INSERT ON "{schema}"."Reaction" FOR EACH ROW
     EXECUTE PROCEDURE "{schema}".cgrdb_insert_reaction()'''
@@ -65,10 +69,10 @@ def load_sql(file):
 
 
 insert_molecule = load_sql('insert_molecule.sql')
+after_insert_molecule = load_sql('after_insert_molecule.sql')
 insert_reaction = load_sql('insert_reaction.sql')
+
 search_substructure_molecule = load_sql('substructure_molecule.sql')
 search_substructure_reaction = load_sql('substructure_reaction.sql')
 search_similar_molecules = load_sql('similar_molecule.sql')
 search_similar_reactions = load_sql('similar_reaction.sql')
-
-fix_new_structure = load_sql('fix_new_structure.sql')
