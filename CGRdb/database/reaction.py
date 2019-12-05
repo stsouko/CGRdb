@@ -142,7 +142,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        return cls._database_.ReactionIndex.exists(signature=bytes(structure))
+        return cls._database_.ReactionIndex.exists(signature=bytes(~structure))
 
     @classmethod
     def find_structure(cls, structure):
@@ -151,7 +151,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        ri = cls._database_.ReactionIndex.get(signature=bytes(structure))
+        ri = cls._database_.ReactionIndex.get(signature=bytes(~structure))
         if ri:
             reaction = ri.reaction
             reaction.structure  # prefetch structure

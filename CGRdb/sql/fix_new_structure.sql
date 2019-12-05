@@ -19,7 +19,7 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_fix_new_structure(molecule integer, structure integer)
+"{schema}".cgrdb_fix_new_structure(structure integer)
 RETURNS VOID
 AS $$
 from CGRtools.containers import ReactionContainer
@@ -28,6 +28,8 @@ from compress_pickle import loads
 from functools import lru_cache
 from json import loads as json_loads
 from itertools import product
+
+molecule = plpy.execute(f'SELECT x.molecule FROM "{schema}"."MoleculeStructure" x WHERE x.id = {structure}')[0]['molecule']
 
 get_mp = f'''SELECT x.reaction r, array_agg(x.molecule) m, array_agg(x.mapping) d, array_agg(x.is_product) p
 FROM "{schema}"."MoleculeReaction" x
@@ -50,6 +52,7 @@ FROM "{schema}"."MoleculeStructure" x JOIN (
 ) mr ON x.molecule = mr.molecule
 GROUP BY mr.reaction'''
 
+rfp = GD['cgrdb_rfp']
 cache_size = GD['cache_size']
 cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
 
@@ -70,14 +73,17 @@ for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
         if not is_p:
             lr += 1
 
+    cgrs = {}
     s = [(structure, cache(structure))]
     for n, mi in enumerate(mp_row['m']):
         if mi == molecule:
             tmp = structures.copy()
             tmp[n] = s
-            for ms in product(*tmp):
-                r = ReactionContainer(ms[:lr], ms[lr:])
-
-# cache not found. lets start searching
-fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
+            for r in product(*tmp):
+                cgrs[~ReactionContainer([c for _, c in r[:lr]], [c for _, c in r[lr:]])] = list({si for si, _ in r})
+    fps = rfp.transform_bitset(list(cgrs))
+    ri = mp_row['r']
+    plpy.execute('INSERT INTO "{schema}"."ReactionIndex" (reaction, signature, fingerprint, structures) VALUES %s' %
+                 ', '.join(f"({ri}, '\\x{bytes(c).hex()}'::bytea, ARRAY{fp}::integer[], ARRAY{si}::integer[])"
+                           for (c, si), fp in zip(cgrs.items(), fps)))
 $$ LANGUAGE plpython3u

@@ -1,1 +1,0 @@
-CGRdbUser is minimal User Entity for CGRdb
