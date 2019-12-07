@@ -182,7 +182,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
 class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     molecule = Required('Molecule')
-    is_canonic = Required(bool, optimistic=False, default=True)
+    is_canonic = Required(bool, optimistic=False, volatile=True)
     signature = Required(bytes, unique=True, volatile=True, lazy=True)
     fingerprint = Required(IntArray, optimistic=False, lazy=True, volatile=True)
     _structure = Required(bytes, optimistic=False, column='structure')

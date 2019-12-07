@@ -65,8 +65,8 @@ while True:
             with plpy.subtransaction():
                 mis = [x['id'] for x in plpy.execute('INSERT INTO "{schema}"."Molecule" (id) VALUES %s RETURNING id' % \
                        ', '.join(['(DEFAULT)'] * len(new)))]
-                insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule, is_canonic) VALUES %s RETURNING id' % \
-                         ', '.join(f"('\\x{dumps(s, compression='gzip').hex()}'::bytea, {m}, True)"
+                insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule) VALUES %s RETURNING id' % \
+                         ', '.join(f"('\\x{dumps(s, compression='gzip').hex()}'::bytea, {m})"
                                    for m, s in zip(mis, new.values()))
                 sis = [x['id'] for x in plpy.execute(insert)]
         except plpy.SPIError:

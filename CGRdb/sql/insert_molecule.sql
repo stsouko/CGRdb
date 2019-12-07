@@ -37,9 +37,8 @@ if current:  # check for atom mapping
     s = loads(current[0]['structure'], compression='gzip')
     if {n: a.atomic_number for n, a in molecule.atoms()} != {n: a.atomic_number for n, a in s.atoms()}:
         raise plpy.DataException('structure forms of molecule should has same mapping and atoms')
-    elif data['is_canonic']:  # additional forms of structure should not be canonic
-        data['is_canonic'] = False
-elif not data['is_canonic']:  # new structure should be canonic
+    data['is_canonic'] = False  # additional forms of structure should not be canonic
+else:  # new structure should be canonic
     data['is_canonic'] = True
 
 data['fingerprint'] = mfp.transform_bitset([molecule])[0]
