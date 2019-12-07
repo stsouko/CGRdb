@@ -76,3 +76,5 @@ search_substructure_molecule = load_sql('substructure_molecule.sql')
 search_substructure_reaction = load_sql('substructure_reaction.sql')
 search_similar_molecules = load_sql('similar_molecule.sql')
 search_similar_reactions = load_sql('similar_reaction.sql')
+
+merge_molecules = load_sql('merge_molecules.sql')

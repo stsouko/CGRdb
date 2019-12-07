@@ -67,6 +67,7 @@ def create_core(args):
                    'GIN (fingerprint gin__int_ops)')
 
         db.execute(init_session.replace('{schema}', schema))
+        db.execute(merge_molecules.replace('{schema}', schema))
 
         db.execute(insert_molecule.replace('{schema}', schema))
         db.execute(insert_molecule_trigger.replace('{schema}', schema))
