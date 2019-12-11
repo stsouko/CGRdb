@@ -26,7 +26,7 @@ from compress_pickle import loads
 
 molecule = loads(data, compression='gzip')
 if not isinstance(molecule, MoleculeContainer):
-    raise plpy.DataException('MoleculeContainer required')
+    raise plpy.spiexceptions.DataException('MoleculeContainer required')
 
 sg = bytes(molecule).hex()
 

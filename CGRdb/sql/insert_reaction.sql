@@ -31,9 +31,9 @@ rfp = GD['cgrdb_rfp']
 data = TD['new']
 reaction = loads(data['structure'], compression='gzip')
 if not isinstance(reaction, ReactionContainer):
-    raise plpy.DataException('ReactionContainer required')
+    raise plpy.spiexceptions.DataException('ReactionContainer required')
 elif not reaction.reactants or not reaction.products:
-    raise ValueError('empty ReactionContainer')
+    raise plpy.spiexceptions.DataException('empty ReactionContainer')
 
 while True:
     # load existing in db molecules

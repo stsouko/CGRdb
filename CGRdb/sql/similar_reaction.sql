@@ -26,7 +26,7 @@ from compress_pickle import loads
 
 reaction = loads(data, compression='gzip')
 if not isinstance(reaction, ReactionContainer):
-    raise plpy.DataException('ReactionContainer required')
+    raise plpy.spiexceptions.DataException('ReactionContainer required')
 
 cgr = ~reaction
 sg = bytes(cgr).hex()

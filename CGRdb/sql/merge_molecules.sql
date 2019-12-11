@@ -19,7 +19,7 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_merge_molecules(source integer, target integer)
+"{schema}".cgrdb_merge_molecules(source integer, target integer, mapping json)
 RETURNS VOID
 AS $$
 
