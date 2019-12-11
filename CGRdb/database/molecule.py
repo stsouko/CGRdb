@@ -140,6 +140,17 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             c.__dict__['_size'] = fnd
             return c
 
+    @classmethod
+    def find_by_fingerprint(cls, fingerprint, signature, operator='substructure'):
+        if not all([isinstance(fingerprint, list), isinstance(signature, bytes)]):
+            raise TypeError('wrong type')
+        ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_{operator}_fingerprint_molecules({fingerprint},"
+                                        f" '\\x{signature}'::bytea)")[0]
+        if fnd:
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
     @cached_property
     def structure_entity(self):
         """
