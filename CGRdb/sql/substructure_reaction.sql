@@ -86,8 +86,7 @@ GROUP BY f.r'''
 
 get_rt = 'SELECT f.r, f.t FROM cgrdb_filtered f'
 
-cache_size = GD['cache_size']
-cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
+cache = lru_cache(GD['cache_size'])(lambda x: loads(s, compression='gzip'))
 ris, rts = [], []
 for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy.cursor(get_rt)):
     m2s = defaultdict(list)  # load structures of molecules
@@ -102,9 +101,11 @@ for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy
             ms = [x.remap(mp, copy=True) for x in m2s[mi]]
         else:
             ms = m2s[mi]
-        structures.append(ms)
-        if not is_p:
+        if is_p:
+            structures.append(ms)
+        else:
             lr += 1
+            structures.insert(0, ms)
 
     if any(cgr <= ~ReactionContainer(ms[:lr], ms[lr:]) for ms in product(*structures)):
         ris.append(rt_row['r'])

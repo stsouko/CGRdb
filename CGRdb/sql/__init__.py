@@ -45,7 +45,7 @@ molecule = config.get('molecule', {})
 reaction = config.get('reaction', {})
 GD['cgrdb_mfp'] = FragmentorFingerprint(**molecule)
 GD['cgrdb_rfp'] = FragmentorFingerprint(**reaction)
-GD['cache_size'] = config.get('cache_size', 128)
+GD['cache_size'] = config.get('cache_size', 256)
 
 $$ LANGUAGE plpython3u'''.replace('$', '$$')
 

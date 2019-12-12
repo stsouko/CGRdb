@@ -33,10 +33,12 @@ data = TD['new']
 if data['is_canonic']:
     return
 
+rfp = GD['cgrdb_rfp']
+cache_size = GD['cache_size']
 molecule = data['molecule']
 structure = data['id']
 
-get_mp = f'''SELECT x.reaction r, array_agg(x.molecule) m, array_agg(x.mapping) d, array_agg(x.is_product) p
+get_mp = f'''SELECT x.reaction r, array_agg(x.id) i, array_agg(x.molecule) m, array_agg(x.mapping) d, array_agg(x.is_product) p
 FROM "{schema}"."MoleculeReaction" x
 WHERE x.reaction IN (
     SELECT y.reaction
@@ -45,7 +47,7 @@ WHERE x.reaction IN (
 )
 GROUP BY x.reaction'''
 
-get_ms = f'''SELECT mr.reaction r, array_agg(x.molecule) m, array_agg(x.id) s, array_agg(x.structure) d
+get_ms = f'''SELECT array_agg(x.molecule) m, array_agg(x.id) s, array_agg(x.structure) d
 FROM "{schema}"."MoleculeStructure" x JOIN (
     SELECT DISTINCT ON (y.reaction, y.molecule) y.reaction, y.molecule
     FROM "{schema}"."MoleculeReaction" y
@@ -57,33 +59,33 @@ FROM "{schema}"."MoleculeStructure" x JOIN (
 ) mr ON x.molecule = mr.molecule
 GROUP BY mr.reaction'''
 
-rfp = GD['cgrdb_rfp']
-cache_size = GD['cache_size']
 cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
-
 for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
     m2s = defaultdict(list)  # load structures of molecules
     for mi, si, s in zip(ms_row['m'], ms_row['s'], ms_row['d']):
         m2s[mi].append((si, cache(si)))
 
     structures = []
+    replacement = {}
     lr = 0
-    for mi, mp, is_p in zip(mp_row['m'], mp_row['d'], mp_row['p']):
+    for mri, mi, mp, is_p in zip(mp_row['i'], mp_row['m'], mp_row['d'], mp_row['p']):
         if mp:
             mp = dict(json_loads(mp))
             ms = [(si, s.remap(mp, copy=True)) for si, s in m2s[mi]]
         else:
             ms = m2s[mi]
-        structures.append(ms)
-        if not is_p:
+        if mi == molecule:  # remapped version of structure
+            replacement[mri] = [(si, s) for si, s in ms if si == structure]
+        if is_p:
+            structures.append((ms, mri))
+        else:
             lr += 1
+            structures.insert(0, (ms, mri))
 
     cgrs = {}
-    s = [(structure, cache(structure))]
-    for n, mi in enumerate(mp_row['m']):
+    for mri, mi in zip(mp_row['i'], mp_row['m']):
         if mi == molecule:
-            tmp = structures.copy()
-            tmp[n] = s
+            tmp = [replacement[i] if i == mri else ms for ms, i in structures]
             for r in product(*tmp):
                 cgrs[~ReactionContainer([c for _, c in r[:lr]], [c for _, c in r[lr:]])] = list({si for si, _ in r})
     fps = rfp.transform_bitset(list(cgrs))
