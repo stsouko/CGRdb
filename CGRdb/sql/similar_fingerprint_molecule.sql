@@ -1,5 +1,6 @@
 /*
 #  Copyright 2019 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -19,10 +20,10 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_search_similar_fingerprint_molecules(fingerprint integer[], signature bytea, OUT id integer, OUT count integer)
+"{schema}".cgrdb_search_similar_fingerprint_molecules(fingerprint integer[], OUT id integer, OUT count integer)
 AS $$
 
-sg = signature.hex()
+sg = hash(frozenset(fingerprint))
 
 get_cache = f'''SELECT x.id, array_length(x.molecules, 1) count
 FROM "{schema}"."MoleculeSearchCache" x
