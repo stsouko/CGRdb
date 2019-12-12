@@ -87,10 +87,10 @@ for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
         if mi == molecule:
             tmp = [replacement[i] if i == mri else ms for ms, i in structures]
             for r in product(*tmp):
-                cgrs[~ReactionContainer([c for _, c in r[:lr]], [c for _, c in r[lr:]])] = list({si for si, _ in r})
+                cgrs[~ReactionContainer([s for _, s in r[:lr]], [s for _, s in r[lr:]])] = list({si for si, _ in r})
     fps = rfp.transform_bitset(list(cgrs))
     ri = mp_row['r']
     plpy.execute('INSERT INTO "{schema}"."ReactionIndex" (reaction, signature, fingerprint, structures) VALUES %s' %
-                 ', '.join(f"({ri}, '\\x{bytes(c).hex()}'::bytea, ARRAY{fp}::integer[], ARRAY{si}::integer[])"
-                           for (c, si), fp in zip(cgrs.items(), fps)))
+                 ', '.join(f"({ri}, '\\x{bytes(s).hex()}'::bytea, ARRAY{fp}::integer[], ARRAY{si}::integer[])"
+                           for (s, si), fp in zip(cgrs.items(), fps)))
 $$ LANGUAGE plpython3u
