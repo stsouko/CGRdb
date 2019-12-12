@@ -23,6 +23,7 @@ from CachedMethods import cached_property
 from CGRtools.containers import MoleculeContainer, QueryContainer
 from compress_pickle import dumps, loads
 from datetime import datetime
+from hashlib import md5
 from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
 
@@ -141,9 +142,11 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
-    def find_by_fingerprint(cls, fingerprint, signature, operator='substructure'):
-        if not all([isinstance(fingerprint, list), isinstance(signature, bytes)]):
-            raise TypeError('wrong type')
+    def find_by_fingerprint(cls, fingerprint, operator='substructure'):
+        if not isinstance(fingerprint, list):
+            raise TypeError('list of active bits expected')
+
+        signature = md5(''.join((str(x) for x in sorted(fingerprint))).encode()).digest()
         ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_{operator}_fingerprint_molecules({fingerprint},"
                                         f" '\\x{signature}'::bytea)")[0]
         if fnd:
