@@ -25,6 +25,7 @@ from compress_pickle import dumps, loads
 from datetime import datetime
 from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
+from typing import Dict
 
 
 class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -114,7 +115,9 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             raise ValueError('empty query')
 
         structure = dumps(structure, compression='gzip').hex()
-        ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_substructure_molecules('\\x{structure}'::bytea)")[0]
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_substructure_molecules('\\x{structure}'::bytea)''')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -134,7 +137,9 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             raise ValueError('empty query')
 
         structure = dumps(structure, compression='gzip').hex()
-        ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_similar_molecules('\\x{structure}'::bytea)")[0]
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea)''')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -145,8 +150,9 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         if not isinstance(fingerprint, list):
             raise TypeError('list of active bits expected')
 
+        schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f" * FROM test.cgrdb_search_substructure_fingerprint_molecules({fingerprint}::integer[])")[0]
+            f'SELECT * FROM "{schema}".cgrdb_search_substructure_fingerprint_molecules({fingerprint}::integer[])')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -157,8 +163,9 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         if not isinstance(fingerprint, list):
             raise TypeError('list of active bits expected')
 
+        schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f" * FROM test.cgrdb_search_similar_fingerprint_molecules({fingerprint}::integer[])")[0]
+            f'SELECT * FROM "{schema}".cgrdb_search_similar_fingerprint_molecules({fingerprint}::integer[])')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -201,6 +208,17 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             return []
         self._database_.Reaction.prefetch_structure(reactions)
         return list(reactions)
+
+    def unite_molecule(self, molecule, mapping: Dict[int, int]):
+        """
+        Unite molecules into single.
+        Don't use this in parallel mode!
+
+        :param molecule: molecule id with will be moved into self.
+        :param mapping: atom-to-atom mapping of molecule into self
+        """
+        mapping = [list(x) for x in mapping.items()]
+        self._database_.execute(f"SELECT test.cgrdb_merge_molecules({molecule}, {self.id}, '{mapping}')")
 
 
 class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):

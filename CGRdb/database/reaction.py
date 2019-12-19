@@ -173,7 +173,9 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
             raise ValueError('empty query')
 
         structure = dumps(structure, compression='gzip').hex()
-        ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_substructure_reactions('\\x{structure}'::bytea)")[0]
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_substructure_reactions('\\x{structure}'::bytea)''')[0]
         if fnd:
             c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -193,7 +195,9 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
             raise ValueError('empty query')
 
         structure = dumps(structure, compression='gzip').hex()
-        ci, fnd = cls._database_.select(f" * FROM test.cgrdb_search_similar_reactions('\\x{structure}'::bytea)")[0]
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_reactions('\\x{structure}'::bytea)''')[0]
         if fnd:
             c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd
