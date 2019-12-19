@@ -21,96 +21,25 @@
 from CachedMethods import cached_property
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
+from compress_pickle import dumps
 from datetime import datetime
 from itertools import product
-from LazyPony import LazyEntityMeta, DoubleLink
-from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray, composite_key
-from ..search import FingerprintReaction, SearchReaction
+from LazyPony import LazyEntityMeta
+from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray, composite_key, raw_sql
 
 
-class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
+class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
-    date = Required(datetime, default=datetime.utcnow)
-    user = DoubleLink(Required('User', reverse='reactions'), Set('Reaction'))
-    molecules = Set('MoleculeReaction')
-    reaction_indexes = Set('ReactionIndex')
+    _structure = Required(bytes, index=False, lazy=True, volatile=True, column='structure', nullable=True)
+    _molecules = Set('MoleculeReaction')
+    _reaction_indexes = Set('ReactionIndex')
 
-    def __init__(self, structure, user):
+    def __init__(self, structure):
         """
         storing reaction in DB.
         :param structure: CGRtools ReactionContainer
-        :param user: user entity
         """
-        super().__init__(user=user)
-        #  move reagents to reactants
-        if structure.reagents:
-            structure = ReactionContainer(structure.reactants + structure.reagents, structure.products)
-        # preload all molecules and structures
-        signatures = {bytes(m) for m in structure.reactants} | {bytes(m) for m in structure.products}
-        ms, s2ms = defaultdict(list), {}
-        for x in select(x for x in self._database_.MoleculeStructure
-                        if x.molecule in select(y.molecule for y in self._database_.MoleculeStructure
-                                                if y.signature in signatures)).prefetch(self._database_.Molecule):
-            # NEED PR
-            # select(y for x in db.MoleculeStructure if x.signature in signatures_set
-            #        for y in db.MoleculeStructure if y.molecule == x.molecule)
-            if x.signature in signatures:
-                s2ms[x.signature] = x
-            if x.last:
-                x.molecule.__dict__['structure_entity'] = x
-            ms[x.molecule].append(x)
-        for m, s in ms.items():
-            m.__dict__['structures_entities'] = tuple(s)
-
-        combinations, duplicates = [], {}
-        for sl, is_p in ((structure.reactants, False), (structure.products, True)):
-            for s in sl:
-                sig = bytes(s)
-                ms = s2ms.get(sig)
-                if ms:
-                    mapping = ms.structure.get_mapping(s)
-                    self._database_.MoleculeReaction(reaction=self, molecule=ms.molecule, is_product=is_p,
-                                                     mapping=mapping)
-                    # first MoleculeStructure always last
-                    if ms.last:  # last structure equal to reaction structure
-                        c = [s]
-                        c.extend(x.structure.remap(mapping, copy=True)
-                                 for x in ms.molecule.structures_entities if not x.last)
-                    else:  # last structure remapping
-                        c = [ms.molecule.structure.remap(mapping, copy=True)]
-                        c.extend(x.structure.remap(mapping, copy=True) if x != ms else s
-                                 for x in ms.molecule.structures_entities if not x.last)
-                    combinations.append(c)
-                else:  # New molecule
-                    if sig not in duplicates:
-                        m = duplicates[sig] = self._database_.Molecule(s, user)
-                        mapping = None
-                    else:
-                        m = duplicates[sig]
-                        mapping = m.structure.get_mapping(s)
-
-                    self._database_.MoleculeReaction(reaction=self, molecule=m, is_product=is_p, mapping=mapping)
-                    combinations.append([s])
-
-        reactants_len = len(structure.reactants)
-        combinations = tuple(product(*combinations))
-        if len(combinations) == 1:  # optimize
-            self.__dict__['structures'] = (structure,)
-            self.__dict__['structure'] = structure
-            self._database_.ReactionIndex(self, structure)
-        else:
-            x = combinations[0]
-            self.__dict__['structure'] = r = ReactionContainer(x[:reactants_len], x[reactants_len:])
-            self._database_.ReactionIndex(self, r)
-
-            cgr = {}
-            for x in combinations[1:]:
-                x = ReactionContainer(x[:reactants_len], x[reactants_len:])
-                cgr[~x] = x
-
-            self.__dict__['structures'] = (r, *cgr.values())
-            for x in cgr:
-                self._database_.ReactionIndex(self, x)
+        super().__init__(_structure=dumps(structure, compression='gzip'))
 
     def __str__(self):
         """
@@ -130,27 +59,32 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         canonical structure of reaction
         """
         # mapping and molecules preload
-        mrs = self.molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
-        # last molecule structures preload
+        mrs = self._molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
+        # canonic molecule structures preload
         ms = {x.molecule for x in mrs}
-        for x in self._database_.MoleculeStructure.select(lambda x: x.last and x.molecule in ms):
+        for x in self._database_.MoleculeStructure.select(lambda x: x.is_canonic and x.molecule in ms):
             x.molecule.__dict__['structure_entity'] = x
 
-        r = ReactionContainer()
+        r, p = [], []
         for m in mrs:
             s = m.molecule.structure
-            r[m.is_product].append(s.remap(m.mapping, copy=True) if m.mapping else s)
-        return r
+            if m.mapping:
+                s = s.remap(m.mapping, copy=True)
+            if m.is_product:
+                p.append(s)
+            else:
+                r.append(s)
+        return ReactionContainer(r, p)
 
     @cached_property
     def structures(self):
         # mapping and molecules preload
-        mrs = self.molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
+        mrs = self._molecules.order_by(lambda x: x.id).prefetch(self._database_.Molecule)[:]
 
         # structures preload
         ms = {x.molecule: [] for x in mrs}
         for x in self._database_.MoleculeStructure.select(lambda x: x.molecule in ms.keys()):
-            if x.last:
+            if x.is_canonic:
                 x.molecule.__dict__['structure_entity'] = x
             ms[x.molecule].append(x)
         for m, s in ms.items():
@@ -161,19 +95,30 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
 
         structures = []
         for x in combinations:
-            r = ReactionContainer()
-            structures.append(r)
+            r, p = [], []
             for s, m in zip(x, mrs):
-                r[m.is_product].append(s.remap(m.mapping, copy=True) if m.mapping else s)
+                if m.mapping:
+                    s = s.remap(m.mapping, copy=True)
+                if m.is_product:
+                    p.append(s)
+                else:
+                    r.append(s)
+            structures.append(ReactionContainer(r, p))
 
         if 'structure' not in self.__dict__:
             if len(structures) == 1:  # optimize
                 self.__dict__['structure'] = structures[0]
             else:
-                self.__dict__['structure'] = r = ReactionContainer()
+                r, p = [], []
                 for m in mrs:
                     s = m.molecule.structure
-                    r[m.is_product].append(s.remap(m.mapping, copy=True) if m.mapping else s)
+                    if m.mapping:
+                        s = s.remap(m.mapping, copy=True)
+                    if m.is_product:
+                        p.append(s)
+                    else:
+                        r.append(s)
+                self.__dict__['structure'] = ReactionContainer(r, p)
         return tuple(structures)
 
     @cached_property
@@ -191,67 +136,94 @@ class Reaction(SearchReaction, metaclass=LazyEntityMeta, database='CGRdb'):
         return tuple(~x for x in self.structures)
 
     @classmethod
+    def structure_exists(cls, structure):
+        if not isinstance(structure, ReactionContainer):
+            raise TypeError('Reaction expected')
+        elif not structure.reactants or not structure.products:
+            raise ValueError('empty query')
+
+        return cls._database_.ReactionIndex.exists(signature=bytes(~structure))
+
+    @classmethod
+    def find_structure(cls, structure):
+        if not isinstance(structure, ReactionContainer):
+            raise TypeError('Reaction expected')
+        elif not structure.reactants or not structure.products:
+            raise ValueError('empty query')
+
+        ri = cls._database_.ReactionIndex.get(signature=bytes(~structure))
+        if ri:
+            reaction = ri.reaction
+            reaction.structure  # prefetch structure
+            return reaction
+
+    @classmethod
+    def find_substructures(cls, structure):
+        """
+        substructure search
+
+        substructure search is 2-step process. first step is screening procedure. next step is isomorphism testing.
+
+        :param structure: CGRtools ReactionContainer
+        :return: ReactionSearchCache object with all found reactions or None
+        """
+        if not isinstance(structure, ReactionContainer):
+            raise TypeError('Reaction expected')
+        elif not structure.reactants or not structure.products:
+            raise ValueError('empty query')
+
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_substructure_reactions('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            c = cls._database_.ReactionSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_similar(cls, structure):
+        """
+        similarity search
+
+        :param structure: CGRtools ReactionContainer
+        :return: ReactionSearchCache object with all found reactions or None
+        """
+        if not isinstance(structure, ReactionContainer):
+            raise TypeError('Reaction expected')
+        elif not structure.reactants or not structure.products:
+            raise ValueError('empty query')
+
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_reactions('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            c = cls._database_.ReactionSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
     def prefetch_structure(cls, reactions):
         """
         preload reaction canonical structures
         :param reactions: Reaction entities list
         """
-        # preload all molecules and last structures
+        # preload all molecules and canonic structures
         for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
-                        if ms.molecule == mr.molecule and ms.last and
+                        if ms.molecule == mr.molecule and ms.is_canonic and
                            mr.reaction in reactions).prefetch(cls._database_.Molecule):
             x.molecule.__dict__['structure_entity'] = x
 
-        for x in reactions:
-            x.__dict__['structure'] = ReactionContainer()
-
         # load mapping and fill reaction
+        rxn = defaultdict(lambda: ([], []))
         for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
             s = x.molecule.structure
-            x.reaction.structure[x.is_product].append(s.remap(x.mapping, copy=True) if x.mapping else s)
-
-    @classmethod
-    def prefetch_structures(cls, reactions):
-        """
-        preload all combinations of reaction structures
-        :param reactions: reactions entities list
-        """
-        # preload all molecules and structures
-        ms = defaultdict(list)
-        for x in select(ms for ms in cls._database_.MoleculeStructure for mr in cls._database_.MoleculeReaction
-                        if ms.molecule == mr.molecule and mr.reaction in reactions).prefetch(cls._database_.Molecule):
-            if x.last:
-                x.molecule.__dict__['structure_entity'] = x
-            ms[x.molecule].append(x)
-
-        for m, s in ms.items():
-            m.__dict__['structures_entities'] = tuple(s)
-
-        combos, mapping, last = defaultdict(list), defaultdict(list), defaultdict(list)
-        for x in cls._database_.MoleculeReaction.select(lambda x: x.reaction in reactions).order_by(lambda x: x.id):
-            r = x.reaction
-            combos[r].append(x.molecule.structures)
-            mapping[r].append((x.is_product, x.mapping))
-            last[r].append(x.molecule.structure)
-
-        for x in reactions:
-            # load last structure
-            x.__dict__['structure'] = r = ReactionContainer()
-            for s, (is_p, m) in zip(last[x], mapping[x]):
-                r[is_p].append(s.remap(m, copy=True) if m else s)
-
-            # load all structures
-            combos_x = list(product(*combos[x]))
-            if len(combos_x) == 1:
-                x.__dict__['structures'] = (r,)
-            else:
-                rs = []
-                for combo in combos_x:
-                    r = ReactionContainer()
-                    rs.append(r)
-                    for s, (is_p, m) in zip(combo, mapping[x]):
-                        r[is_p].append(s.remap(m, copy=True) if m else s)
-                x.__dict__['structures'] = tuple(rs)
+            if x.mapping:
+                s = s.remap(x.mapping, copy=True)
+            rxn[x.reaction][x.is_product].append(s)
+        for r, rp in rxn.items():
+            r.__dict__['structure'] = ReactionContainer(*rp)
 
 
 class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -260,31 +232,20 @@ class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
     molecule = Required('Molecule')
-    is_product = Required(bool, default=False)
+    is_product = Required(bool)
     _mapping = Optional(Json, column='mapping', nullable=True)
-
-    def __init__(self, *, mapping=None, **kwargs):
-        super().__init__(_mapping=self._compressed_mapping(mapping), **kwargs)
 
     @cached_property
     def mapping(self):
         return dict(self._mapping) if self._mapping else {}
 
-    @staticmethod
-    def _compressed_mapping(mapping):
-        return mapping and [(k, v) for k, v in mapping.items() if k != v] or None
 
-
-class ReactionIndex(FingerprintReaction, metaclass=LazyEntityMeta, database='CGRdb'):
+class ReactionIndex(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
-    signature = Required(bytes, unique=True)
-    bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
-
-    def __init__(self, reaction, structure):
-        if isinstance(structure, ReactionContainer):
-            structure = ~structure
-        super().__init__(reaction=reaction, signature=bytes(structure), bit_array=self.get_fingerprint(structure))
+    signature = Required(bytes, unique=True, volatile=True, lazy=True)
+    fingerprint = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True)
+    _structures = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True, column='structures')
 
 
 class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -292,9 +253,45 @@ class ReactionSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     signature = Required(bytes)
     operator = Required(str)
     date = Required(datetime, default=datetime.utcnow)
-    reactions = Required(IntArray, optimistic=False, index=False)
-    tanimotos = Required(FloatArray, optimistic=False, index=False)
+    _reactions = Required(IntArray, optimistic=False, index=False, column='reactions', lazy=True)
+    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True, sql_type='real[]')
     composite_key(signature, operator)
+
+    def reactions(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        ris = select(x._reactions[start:end] for x in self.__class__ if x.id == self.id).first()
+        if not ris:
+            return []
+
+        # preload molecules
+        rs = {x.id: x for x in self._database_.Reaction.select(lambda x: x.id in ris)}
+        rs = [rs[x] for x in ris]
+        self._database_.Reaction.prefetch_structure(rs)
+        return rs
+
+    def tanimotos(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        sts = select(x._tanimotos[start:end] for x in self.__class__ if x.id == self.id).first()
+        return list(sts)
+
+    def __len__(self):
+        return self._size
+
+    @cached_property
+    def _size(self):
+        return select(raw_sql('array_length(x.reactions, 1)') for x in self.__class__ if x.id == self.id).first()
 
 
 __all__ = ['Reaction', 'MoleculeReaction', 'ReactionIndex', 'ReactionSearchCache']

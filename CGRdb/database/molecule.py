@@ -20,23 +20,22 @@
 #  MA 02110-1301, USA.
 #
 from CachedMethods import cached_property
+from CGRtools.containers import MoleculeContainer, QueryContainer
+from compress_pickle import dumps, loads
 from datetime import datetime
-from LazyPony import LazyEntityMeta, DoubleLink
-from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join
-from pickle import dumps, loads
-from ..search import FingerprintMolecule, SearchMolecule
+from LazyPony import LazyEntityMeta
+from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
+from typing import Dict
 
 
-class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
+class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
-    date = Required(datetime, default=datetime.utcnow)
-    user = DoubleLink(Required('User', reverse='molecules'), Set('Molecule'))
     _structures = Set('MoleculeStructure')
     _reactions = Set('MoleculeReaction')
 
-    def __init__(self, structure, user):
-        super().__init__(user=user)
-        self.__dict__['structure_entity'] = x = self._database_.MoleculeStructure(self, structure, user)
+    def __init__(self, structure):
+        super().__init__()
+        self.__dict__['structure_entity'] = x = self._database_.MoleculeStructure(molecule=self, structure=structure)
         self.__dict__['structures_entities'] = (x,)
 
     def __str__(self):
@@ -59,13 +58,6 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         return self.structure_entity.structure
 
     @cached_property
-    def structure_raw(self):
-        """
-        matched structure of molecule
-        """
-        return self.structure_raw_entity.structure
-
-    @cached_property
     def structures(self):
         """
         all structures of molecule
@@ -84,19 +76,107 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         """
         return [x.structure for x in self.reactions_entities(page, pagesize, product)]
 
+    @classmethod
+    def structure_exists(cls, structure):
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        return cls._database_.MoleculeStructure.exists(signature=bytes(structure))
+
+    @classmethod
+    def find_structure(cls, structure):
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        ms = cls._database_.MoleculeStructure.get(signature=bytes(structure))
+        if ms:
+            molecule = ms.molecule
+            if ms.is_canonic:  # save if structure is canonical
+                molecule.__dict__['structure_entity'] = ms
+            return molecule
+
+    @classmethod
+    def find_substructures(cls, structure):
+        """
+        substructure search
+
+        substructure search is 2-step process. first step is screening procedure. next step is isomorphism testing.
+
+        :param structure: CGRtools MoleculeContainer or QueryContainer
+        :return: MoleculeSearchCache object with all found molecules or None
+        """
+        if not isinstance(structure, (MoleculeContainer, QueryContainer)):
+            raise TypeError('Molecule or Query expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_substructure_molecules('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_similar(cls, structure):
+        """
+        similarity search
+
+        :param structure: CGRtools MoleculeContainer
+        :return: MoleculeSearchCache object with all found molecules or None
+        """
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_substructure_fingerprint(cls, fingerprint):
+        if not isinstance(fingerprint, list):
+            raise TypeError('list of active bits expected')
+
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'SELECT * FROM "{schema}".cgrdb_search_substructure_fingerprint_molecules({fingerprint}::integer[])')[0]
+        if fnd:
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_similar_fingerprint(cls, fingerprint):
+        if not isinstance(fingerprint, list):
+            raise TypeError('list of active bits expected')
+
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'SELECT * FROM "{schema}".cgrdb_search_similar_fingerprint_molecules({fingerprint}::integer[])')[0]
+        if fnd:
+            c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
     @cached_property
     def structure_entity(self):
         """
         canonical structure entity of molecule
         """
-        return self._structures.filter(lambda x: x.last).first()
-
-    @cached_property
-    def structure_raw_entity(self):
-        """
-        matched structure entity of molecule
-        """
-        raise AttributeError('available in entities from queries results only')
+        return self._structures.filter(lambda x: x.is_canonic).first()
 
     @cached_property
     def structures_entities(self):
@@ -104,11 +184,11 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         canonical structure entity of molecule
         """
         s = tuple(self._structures.select())
-        if 'structure_entity' not in self.__dict__:  # caching last structure
-            self.__dict__['structure_entity'] = next(x for x in s if x.last)
+        if 'structure_entity' not in self.__dict__:  # caching canonic structure
+            self.__dict__['structure_entity'] = next(x for x in s if x.is_canonic)
         return s
 
-    def reactions_entities(self, page=1, pagesize=100, product=None, set_all=False):
+    def reactions_entities(self, page=1, pagesize=100, product=None):
         """
         list of reactions entities including this molecule. chunks-separated for memory saving
 
@@ -116,7 +196,6 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         :param pagesize: maximum number of reactions in list
         :param product: if True - reactions including this molecule in product side returned.
         if None any reactions including this molecule.
-        :param set_all: preload all structure combinations
         :return: list of reaction entities
         """
         q = left_join(x.reaction for x in self._database_.MoleculeReaction
@@ -127,30 +206,38 @@ class Molecule(SearchMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
         reactions = q.page(page, pagesize)
         if not reactions:
             return []
-        if set_all:
-            self._database_.Reaction.prefetch_structures(reactions)
-        else:
-            self._database_.Reaction.prefetch_structure(reactions)
+        self._database_.Reaction.prefetch_structure(reactions)
         return list(reactions)
 
+    def unite_molecule(self, molecule, mapping: Dict[int, int]):
+        """
+        Unite molecules into single.
+        Don't use this in parallel mode!
 
-class MoleculeStructure(FingerprintMolecule, metaclass=LazyEntityMeta, database='CGRdb'):
+        :param molecule: molecule id with will be moved into self.
+        :param mapping: atom-to-atom mapping of molecule into self
+        """
+        mapping = [list(x) for x in mapping.items()]
+        self._database_.execute(f"SELECT test.cgrdb_merge_molecules({molecule}, {self.id}, '{mapping}')")
+
+
+class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
-    user = DoubleLink(Required('User', reverse='molecule_structures'), Set('MoleculeStructure'))
     molecule = Required('Molecule')
-    date = Required(datetime, default=datetime.utcnow)
-    last = Required(bool, default=True)
-    data = Required(bytes, optimistic=False)
-    signature = Required(bytes, unique=True)
-    bit_array = Required(IntArray, optimistic=False, index=False, lazy=True)
+    is_canonic = Required(bool, optimistic=False, volatile=True)
+    signature = Required(bytes, unique=True, volatile=True, lazy=True)
+    fingerprint = Required(IntArray, optimistic=False, lazy=True, volatile=True)
+    _structure = Required(bytes, optimistic=False, column='structure')
 
-    def __init__(self, molecule, structure, user):
-        super().__init__(molecule=molecule, data=dumps(structure), user=user, signature=bytes(structure),
-                         bit_array=self.get_fingerprint(structure))
+    def __init__(self, **kwargs):
+        structure = kwargs.pop('structure')
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('molecule expected')
+        super().__init__(_structure=dumps(structure, compression='gzip'), **kwargs)
 
     @cached_property
     def structure(self):
-        return loads(self.data)
+        return loads(self._structure, compression='gzip')
 
 
 class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -158,10 +245,48 @@ class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
     signature = Required(bytes)
     operator = Required(str)
     date = Required(datetime, default=datetime.utcnow)
-    molecules = Required(IntArray, optimistic=False, index=False)
-    structures = Required(IntArray, optimistic=False, index=False)
-    tanimotos = Required(FloatArray, optimistic=False, index=False)
+    _molecules = Required(IntArray, optimistic=False, index=False, column='molecules', lazy=True)
+    _tanimotos = Required(FloatArray, optimistic=False, index=False, column='tanimotos', lazy=True, sql_type='real[]')
     composite_key(signature, operator)
+
+    def molecules(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        mis = select(x._molecules[start:end] for x in self.__class__ if x.id == self.id).first()
+        if not mis:
+            return []
+
+        # preload molecules
+        ms = {x.id: x for x in self._database_.Molecule.select(lambda x: x.id in mis)}
+
+        # preload molecules canonical structures
+        for x in self._database_.MoleculeStructure.select(lambda x: x.molecule.id in mis and x.is_canonic):
+            x.molecule.__dict__['structure_entity'] = x
+
+        return [ms[x] for x in mis]
+
+    def tanimotos(self, page=1, pagesize=100):
+        if page < 1:
+            raise ValueError('page should be greater or equal than 1')
+        elif pagesize < 1:
+            raise ValueError('pagesize should be greater or equal than 1')
+
+        start = (page - 1) * pagesize
+        end = start + pagesize
+        sts = select(x._tanimotos[start:end] for x in self.__class__ if x.id == self.id).first()
+        return list(sts)
+
+    def __len__(self):
+        return self._size
+
+    @cached_property
+    def _size(self):
+        return select(raw_sql('array_length(x.molecules, 1)') for x in self.__class__ if x.id == self.id).first()
 
 
 __all__ = ['Molecule', 'MoleculeStructure', 'MoleculeSearchCache']
