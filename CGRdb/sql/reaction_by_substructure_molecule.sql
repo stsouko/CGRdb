@@ -22,6 +22,10 @@ AS $$
 from CGRtools.containers import MoleculeContainer, QueryContainer
 from compress_pickle import loads
 
+# role: 0 - any, 1 - reactant, 2 - product
+if role not in (0, 1, 2):
+    raise plpy.spiexceptions.DataException('role invalid')
+
 molecule = loads(data, compression='gzip')
 if not isinstance(molecule, (MoleculeContainer, QueryContainer)):
     raise plpy.spiexceptions.DataException('MoleculeContainer or QueryContainer required')
@@ -30,7 +34,7 @@ sg = bytes(molecule).hex()
 
 get_cache = f'''SELECT x.id, array_length(x.reactions, 1) count
 FROM "{schema}"."ReactionSearchCache" x
-WHERE x.operator = 'substructure' AND x.signature = '\\x{sg}'::bytea'''
+WHERE x.operator = 'substructure' AND x.signature = '\\x{role}{sg}'::bytea'''
 
 # test for existing cache
 found = plpy.execute(get_cache)
@@ -43,7 +47,7 @@ if not found['count']:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
+VALUES ('\\x{role}{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
 RETURNING id, 0 count''')
 
@@ -53,22 +57,33 @@ RETURNING id, 0 count''')
     return found[0]
 
 # store found molecules to cache
+if role == 1:
+    role_filter = 'WHERE r.is_product = False'
+elif role == 2:
+    role_filter = 'WHERE r.is_product = True'
+else:
+    role_filter = ''
+
+plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_filtered ON COMMIT DROP AS
+SELECT h.r, h.t FROM (
+    SELECT DISTINCT ON (r.reaction) r.reaction r, s.t
+    FROM "{schema}"."MoleculeReaction" r
+    JOIN
+    (
+        SELECT unnest(x.molecules) m, unnest(x.tanimotos) t
+        FROM "{schema}"."MoleculeSearchCache" x
+        WHERE x.id = {found['id']}
+    ) s
+    ON r.molecule = s.m
+    {role_filter}
+) h
+ORDER BY h.t DESC''')
+
 found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-SELECT '\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
+SELECT '\\x{role}{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
 FROM (
-    SELECT f.r, f.t FROM (
-        SELECT DISTINCT ON (r.reaction) r.reaction r, s.t
-        FROM "{schema}"."MoleculeReaction" r
-        JOIN
-        (
-            SELECT unnest(x.molecules) m, unnest(x.tanimotos) t
-            FROM "{schema}"."MoleculeSearchCache" x
-            WHERE x.id = 1
-        ) s
-        ON r.molecule = s.m
-        ) f
-    ORDER BY f.t DESC
+
 ) o
 ON CONFLICT DO NOTHING
 RETURNING id, array_length(reactions, 1) count''')
