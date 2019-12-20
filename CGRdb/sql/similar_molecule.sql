@@ -66,7 +66,7 @@ SELECT '\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, array_agg(o.m), array_agg
 FROM (
     SELECT h.m, h.t
     FROM (
-        SELECT DISTINCT ON (f.m) m, f.t
+        SELECT DISTINCT ON (f.m) f.m, f.t
         FROM cgrdb_query f
         ORDER BY f.m, f.t DESC
     ) h

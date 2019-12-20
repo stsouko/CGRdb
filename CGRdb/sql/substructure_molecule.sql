@@ -70,7 +70,7 @@ RETURNING id, 0 count''')
 # get most similar structure for each molecule
 get_data = '''SELECT h.m, h.t, s.structure d
 FROM (
-    SELECT DISTINCT ON (f.m) m, f.s, f.t
+    SELECT DISTINCT ON (f.m) f.m, f.s, f.t
     FROM cgrdb_query f
     ORDER BY f.m, f.t DESC
 ) h JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id

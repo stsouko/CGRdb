@@ -68,7 +68,7 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
 plpy.execute('''CREATE TEMPORARY TABLE cgrdb_filtered ON COMMIT DROP AS
 SELECT h.r, h.s, h.t
 FROM (
-    SELECT DISTINCT ON (f.r) r, f.s, f.t
+    SELECT DISTINCT ON (f.r) f.r, f.s, f.t
     FROM cgrdb_query f
     ORDER BY f.r, f.t DESC
 ) h
