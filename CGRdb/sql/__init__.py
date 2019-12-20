@@ -76,5 +76,6 @@ search_similar_molecules = load_sql('similar_molecule.sql')
 search_similar_reactions = load_sql('similar_reaction.sql')
 search_substructure_fingerprint_molecule = load_sql('substructure_fingerprint_molecule.sql')
 search_similar_fingerprint_molecule = load_sql('similar_fingerprint_molecule.sql')
+search_reactions_by_molecule = load_sql('reaction_by_molecule.sql')
 
 merge_molecules = load_sql('merge_molecules.sql')
