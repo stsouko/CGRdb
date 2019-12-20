@@ -84,6 +84,7 @@ def create_core(args):
         db.execute(search_substructure_reaction.replace('{schema}', schema))
         db.execute(search_substructure_fingerprint_molecule.replace('{schema}', schema))
         db.execute(search_similar_fingerprint_molecule.replace('{schema}', schema))
+        db.execute(search_reactions_by_molecule.replace('{schema}', schema))
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)

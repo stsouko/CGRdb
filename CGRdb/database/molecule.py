@@ -23,7 +23,7 @@ from compress_pickle import dumps, loads
 from datetime import datetime
 from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
-from typing import Dict
+from typing import Dict, Optional
 
 
 class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -140,6 +140,66 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea)''')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_substructure_reactions(cls, structure, is_product: Optional[bool] = None):
+        """
+        search reactions including substructure molecules
+
+        :param structure: CGRtools MoleculeContainer or QueryContainer
+        :param is_product: role of molecule: Reactant = False, Product = True, Any = None
+        :return:ReactionSearchCache object with all found reactions or None
+        """
+        if not isinstance(structure, (MoleculeContainer, QueryContainer)):
+            raise TypeError('Molecule or Query expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        if is_product is None:
+            role = 0
+        elif isinstance(is_product, bool):
+            role = 2 if is_product else 1
+        else:
+            raise ValueError('invalid role')
+
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 1)''')[0]
+        if fnd:
+            c = cls._database_.ReactionSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_similar_reactions(cls, structure, is_product: Optional[bool] = None):
+        """
+        search reactions including similar molecules
+
+        :param structure: CGRtools MoleculeContainer
+        :param is_product: role of molecule: Reactant = False, Product = True, Any = None
+        :return:ReactionSearchCache object with all found reactions or None
+        """
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        if is_product is None:
+            role = 0
+        elif isinstance(is_product, bool):
+            role = 2 if is_product else 1
+        else:
+            raise ValueError('invalid role')
+
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 2)''')[0]
+        if fnd:
+            c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd
             return c
 
