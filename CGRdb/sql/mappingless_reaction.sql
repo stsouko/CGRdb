@@ -89,13 +89,16 @@ RETURNING id, 0 count''')
 
 # save found results
 t_sum = ' + '.join(f'o{n}.t' for n in range(len(molecules)))
-joins = '\n'.join(f'JOIN cgrdb_filtered{n} o{n} ON o0.r = o{n}.r' for n in range(1, len(molecules)))
+joins = ' '.join(f'JOIN cgrdb_filtered{n} o{n} ON o0.r = o{n}.r' for n in range(1, len(molecules)))
 
 found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-SELECT '\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, array_agg(o0.r), array_agg(({t_sum}) / {len(molecules)})
-FROM cgrdb_filtered0 o0
-{joins}
+SELECT '\\x{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
+FROM (
+    SELECT o0.r, ({t_sum}) / {len(molecules)} t
+    FROM cgrdb_filtered0 o0 {joins}
+    ORDER BY t DESC
+) o
 ON CONFLICT DO NOTHING
 RETURNING id, array_length(reactions, 1) count''')
 
