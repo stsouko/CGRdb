@@ -48,6 +48,7 @@ if found:
 # cache not found. lets start searching
 fp = GD['cgrdb_mfp'].transform_bitset([screen])[0]
 
+plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
 SELECT x.molecule m, x.id s, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
 FROM "{schema}"."MoleculeStructure" x

@@ -70,6 +70,7 @@ RETURNING id, 0 count''')
     return found[0]
 
 # store found molecules to cache
+plpy.execute('DROP TABLE IF EXISTS cgrdb_filtered')
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_filtered ON COMMIT DROP AS
 SELECT h.r, h.t FROM (
     SELECT DISTINCT ON (r.reaction) r.reaction r, s.t

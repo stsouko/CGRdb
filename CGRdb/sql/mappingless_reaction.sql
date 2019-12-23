@@ -17,42 +17,69 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_search_similar_reactions(data bytea, OUT id integer, OUT count integer)
+"{schema}".cgrdb_search_mappingless_substructure_reactions(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import ReactionContainer
-from compress_pickle import loads
+from compress_pickle import loads, dumps
+from itertools import chain
 
 reaction = loads(data, compression='gzip')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 
-cgr = ~reaction
-sg = bytes(cgr).hex()
+sg = bytes(reaction).hex()
 
 get_cache = f'''SELECT x.id, array_length(x.reactions, 1) count
 FROM "{schema}"."ReactionSearchCache" x
-WHERE x.operator = 'similar' AND x.signature = '\\x{sg}'::bytea'''
+WHERE x.operator = 'substructure' AND x.signature = '\\x{sg}'::bytea'''
 
 # test for existing cache
 found = plpy.execute(get_cache)
 if found:
     return found[0]
 
-# cache not found. lets start searching
-fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
+# search molecules
+molecules = []  # cached molecules
+for m in chain(reaction.reactants, reaction.products):
+    m = dumps(m, compression='gzip').hex()
+    found = plpy.execute(f'''SELECT * FROM "{schema}".cgrdb_search_substructure_molecules('\\x{m}'::bytea)''')[0]
+    # check for empty results
+    if not found['count']:
+        # store empty cache
+        found = plpy.execute(f'''INSERT INTO
+"{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
+VALUES ('{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
+ON CONFLICT DO NOTHING
+RETURNING id, 0 count''')
 
-plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
-plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.reaction r, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
-FROM "{schema}"."ReactionIndex" x
-WHERE x.fingerprint % ARRAY{fp}::integer[]''')
+        # concurrent process stored same query. just reuse it
+        if not found:
+            found = plpy.execute(get_cache)
+        return found[0]
+    molecules.append(found['id'])
+
+# store found molecules to cache
+plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_filtered ON COMMIT DROP AS
+SELECT h.r, h.t FROM (
+    SELECT DISTINCT ON (r.reaction) r.reaction r, s.t
+    FROM "{schema}"."MoleculeReaction" r
+    JOIN
+    (
+        SELECT unnest(x.molecules) m, unnest(x.tanimotos) t
+        FROM "{schema}"."MoleculeSearchCache" x
+        WHERE x.id = {found['id']}
+    ) s
+    ON r.molecule = s.m
+    {role_filter}
+) h
+ORDER BY h.t DESC''')
 
 # check for empty results
-if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
+if not plpy.execute('SELECT COUNT(*) FROM cgrdb_filtered')[0]['count']:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-VALUES ('\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
+VALUES ('{sg}'::bytea, '{search_type}', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
 RETURNING id, 0 count''')
 
@@ -61,19 +88,11 @@ RETURNING id, 0 count''')
         found = plpy.execute(get_cache)
     return found[0]
 
-# store found molecules to cache
+# save found results
 found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-SELECT '\\x{sg}'::bytea, 'similar', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
-FROM (
-    SELECT h.r, h.t
-    FROM (
-        SELECT DISTINCT ON (f.r) f.r, f.t
-        FROM cgrdb_query f
-        ORDER BY f.r, f.t DESC
-    ) h
-    ORDER BY h.t DESC
-) o
+SELECT '{sg}'::bytea, 'substructure', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
+FROM cgrdb_filtered o
 ON CONFLICT DO NOTHING
 RETURNING id, array_length(reactions, 1) count''')
 

@@ -202,6 +202,28 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
+    def find_mappingless_substructures(cls, structure):
+        """
+        search reactions by substructures of molecules
+
+        :param structure: CGRtools ReactionContainer
+        :return: ReactionSearchCache object with all found reactions or None
+        """
+        if not isinstance(structure, ReactionContainer):
+            raise TypeError('Reaction expected')
+        elif not structure.reactants and not structure.products:
+            raise ValueError('empty query')
+
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(
+            f'''SELECT * FROM "{schema}".cgrdb_search_mappingless_substructure_reactions('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            c = cls._database_.ReactionSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
     def prefetch_structure(cls, reactions):
         """
         preload reaction canonical structures
