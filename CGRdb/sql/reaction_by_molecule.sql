@@ -22,15 +22,6 @@ AS $$
 from CGRtools.containers import MoleculeContainer, QueryContainer
 from compress_pickle import loads
 
-if role == 0:  # role: 0 - any, 1 - reactant, 2 - product
-    role_filter = ''
-elif role == 1:
-    role_filter = 'WHERE r.is_product = False'
-elif role == 2:
-    role_filter = 'WHERE r.is_product = True'
-else:
-    raise plpy.spiexceptions.DataException('role invalid')
-
 if search  == 1:  # search: 1 - substructure, 2 - similar
     search_type = 'substructure'
 elif search == 2:
@@ -38,15 +29,27 @@ elif search == 2:
 else:
     raise plpy.spiexceptions.DataException('search type invalid')
 
+if role == 0:  # role: 0 - any, 1 - reactant, 2 - product
+    role_filter = ''
+    search_type += '_any'
+elif role == 1:
+    role_filter = 'WHERE r.is_product = False'
+    search_type += '_reactant'
+elif role == 2:
+    role_filter = 'WHERE r.is_product = True'
+    search_type += '_product'
+else:
+    raise plpy.spiexceptions.DataException('role invalid')
+
 molecule = loads(data, compression='gzip')
 if not isinstance(molecule, (MoleculeContainer, QueryContainer)):
     raise plpy.spiexceptions.DataException('MoleculeContainer or QueryContainer required')
 
-sg = f'\\x{role}{role}{bytes(molecule).hex()}'
+sg = bytes(molecule).hex()
 
 get_cache = f'''SELECT x.id, array_length(x.reactions, 1) count
 FROM "{schema}"."ReactionSearchCache" x
-WHERE x.operator = '{search_type}' AND x.signature = '{sg}'::bytea'''
+WHERE x.operator = '{search_type}' AND x.signature = '\\x{sg}'::bytea'''
 
 # test for existing cache
 found = plpy.execute(get_cache)
@@ -60,7 +63,7 @@ if not found['count']:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-VALUES ('{sg}'::bytea, '{search_type}', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
+VALUES ('\\x{sg}'::bytea, '{search_type}', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
 RETURNING id, 0 count''')
 
@@ -90,7 +93,7 @@ if not plpy.execute('SELECT COUNT(*) FROM cgrdb_filtered')[0]['count']:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-VALUES ('{sg}'::bytea, '{search_type}', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
+VALUES ('\\x{sg}'::bytea, '{search_type}', CURRENT_TIMESTAMP, ARRAY[]::integer[], ARRAY[]::real[])
 ON CONFLICT DO NOTHING
 RETURNING id, 0 count''')
 
@@ -102,7 +105,7 @@ RETURNING id, 0 count''')
 # save found results
 found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
-SELECT '{sg}'::bytea, '{search_type}', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
+SELECT '\\x{sg}'::bytea, '{search_type}', CURRENT_TIMESTAMP, array_agg(o.r), array_agg(o.t)
 FROM cgrdb_filtered o
 ON CONFLICT DO NOTHING
 RETURNING id, array_length(reactions, 1) count''')
