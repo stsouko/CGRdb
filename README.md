@@ -2,16 +2,21 @@
 
 INSTALL
 =======
+Stable version
 
-    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=CGRdb
+    pip install CGRdb[postgres]
 
 or
 
-    pip install CGRdb
+    pip install CGRdb[postgres_cffi]
 
-initialize CGRdb \[after postgres setup only\]
+DEV version
 
-    cgrdb init -p 'your password' # use -h argument for help printing
+    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=CGRdb[postgres]
+
+or
+
+    pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=CGRdb[postgres_cffi]
 
 POSTGRES SETUP (Ubuntu 18.04 example)
 =====================================
@@ -58,3 +63,14 @@ install `CGRtools`, `CIMtools` and `compress-pickle` into system
     sudo pip3 install compress-pickle 
     sudo pip3 install git+https://github.com/cimm-kzn/CGRtools.git@master#egg=CGRtools
     sudo pip3 install git+https://github.com/stsouko/CIMtools.git@master#egg=CIMtools
+
+SETUP
+=====
+
+initialize CGRdb \[after postgres setup only\] \[need only once\]
+
+    cgrdb init -p 'your password' # use -h argument for help printing
+
+create database \[required empty schema 'schema_name' in db\]
+
+    cgrdb create -p 'your password' -n 'schema_name' # use -h argument for help printing
