@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
