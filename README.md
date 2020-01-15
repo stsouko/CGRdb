@@ -1,7 +1,11 @@
-**CGRdb** - DataBase Management system for chemical data
+CGRdb
+=====
+
+Chemical cartridge for reactions and molecules.
 
 INSTALL
-=======
+-------
+
 Stable version
 
     pip install CGRdb[postgres]
@@ -18,8 +22,20 @@ or
 
     pip install -U git+https://github.com/stsouko/CGRdb.git@master#egg=CGRdb[postgres_cffi]
 
+SETUP
+-----
+
+initialize CGRdb \[after postgres setup only\] \[need only once\]
+
+    cgrdb init -p 'your password' # use -h argument for help printing
+
+create database \[required empty schema 'schema_name' in db\]
+
+    cgrdb create -p 'your password' -n 'schema_name' # use -h argument for help printing
+
 POSTGRES SETUP (Ubuntu 18.04 example)
-=====================================
+-------------------------------------
+
 install  postgresql:
 
     sudo apt install postgresql postgresql-server-dev-10 postgresql-plpython3-10
@@ -64,13 +80,13 @@ install `CGRtools`, `CIMtools` and `compress-pickle` into system
     sudo pip3 install git+https://github.com/cimm-kzn/CGRtools.git@master#egg=CGRtools
     sudo pip3 install git+https://github.com/stsouko/CIMtools.git@master#egg=CIMtools
 
-SETUP
-=====
+COPYRIGHT
+---------
 
-initialize CGRdb \[after postgres setup only\] \[need only once\]
+2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 
-    cgrdb init -p 'your password' # use -h argument for help printing
+CONTRIBUTORS
+------------
 
-create database \[required empty schema 'schema_name' in db\]
-
-    cgrdb create -p 'your password' -n 'schema_name' # use -h argument for help printing
+* Adelia Fatykhova <adelik21979@gmail.com>
+* Salavat Zabirov <zab.sal42@gmail.com>
