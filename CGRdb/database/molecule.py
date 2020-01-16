@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  Copyright 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
@@ -272,9 +272,11 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         Unite molecules into single.
         Don't use this in parallel mode!
 
-        :param molecule: molecule id with will be moved into self.
+        :param molecule: Molecule object or id which will be moved into self.
         :param mapping: atom-to-atom mapping of molecule into self
         """
+        if not isinstance(molecule, int):
+            molecule = molecule.id
         mapping = [list(x) for x in mapping.items()]
         self._database_.execute(f"SELECT test.cgrdb_merge_molecules({molecule}, {self.id}, '{mapping}')")
 

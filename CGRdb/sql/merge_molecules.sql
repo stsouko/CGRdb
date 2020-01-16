@@ -90,7 +90,7 @@ for molecule, update_s, update_si in ((source, t_structures, t_ids), (target, s_
         FROM "{schema}"."MoleculeReaction" y
         WHERE y.molecule = {molecule}
     )
-    GROUP BY x.reaction'''
+    GROUP BY x.reaction ORDER BY x.reaction'''
 
     get_ms = f'''SELECT array_agg(x.molecule) m, array_agg(x.id) s, array_agg(x.structure) d
     FROM "{schema}"."MoleculeStructure" x JOIN (
@@ -102,7 +102,7 @@ for molecule, update_s, update_si in ((source, t_structures, t_ids), (target, s_
             WHERE z.molecule = {molecule}
         )
     ) mr ON x.molecule = mr.molecule
-    GROUP BY mr.reaction'''
+    GROUP BY mr.reaction ORDER BY mr.reaction'''
 
     update = list(zip(update_si, update_s))
     for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):

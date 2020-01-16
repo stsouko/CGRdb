@@ -43,7 +43,7 @@ WHERE x.reaction IN (
     FROM "{schema}"."MoleculeReaction" y
     WHERE y.molecule = {molecule}
 )
-GROUP BY x.reaction'''
+GROUP BY x.reaction ORDER BY x.reaction'''
 
 get_ms = f'''SELECT array_agg(x.molecule) m, array_agg(x.id) s, array_agg(x.structure) d
 FROM "{schema}"."MoleculeStructure" x JOIN (
@@ -55,7 +55,7 @@ FROM "{schema}"."MoleculeStructure" x JOIN (
         WHERE z.molecule = {molecule}
     )
 ) mr ON x.molecule = mr.molecule
-GROUP BY mr.reaction'''
+GROUP BY mr.reaction ORDER BY mr.reaction'''
 
 cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
 for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
