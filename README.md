@@ -70,6 +70,10 @@ uncomment and change next line in `/etc/postgresql/10/main/postgresql.conf`
 
     deadlock_timeout = 10s
 
+add line into `/etc/postgresql/10/main/environment`
+
+    PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+
 restart postgres
 
     sudo systemctl restart postgresql
