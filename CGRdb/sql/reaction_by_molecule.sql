@@ -23,21 +23,21 @@ from CGRtools.containers import MoleculeContainer, QueryContainer
 from compress_pickle import loads
 
 if search  == 1:  # search: 1 - substructure, 2 - similar
-    search_type = 'substructure'
+    search_function = 'substructure'
 elif search == 2:
-    search_type = 'similar'
+    search_function = 'similar'
 else:
     raise plpy.spiexceptions.DataException('search type invalid')
 
 if role == 0:  # role: 0 - any, 1 - reactant, 2 - product
     role_filter = ''
-    search_type += '_any'
+    search_type = search_function + '_any'
 elif role == 1:
     role_filter = 'WHERE r.is_product = False'
-    search_type += '_reactant'
+    search_type = search_function + '_reactant'
 elif role == 2:
     role_filter = 'WHERE r.is_product = True'
-    search_type += '_product'
+    search_type = search_function + '_product'
 else:
     raise plpy.spiexceptions.DataException('role invalid')
 
@@ -57,7 +57,7 @@ if found:
     return found[0]
 
 # search molecules
-found = plpy.execute(f'''SELECT * FROM "{schema}".cgrdb_search_{search_type}_molecules('\\x{data.hex()}'::bytea)''')[0]
+found = plpy.execute(f'''SELECT * FROM "{schema}".cgrdb_search_{search_function}_molecules('\\x{data.hex()}'::bytea)''')[0]
 # check for empty results
 if not found['count']:
     # store empty cache

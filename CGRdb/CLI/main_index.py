@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -17,24 +17,19 @@
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
 from importlib import import_module
-from json import dumps
 from LazyPony import LazyEntityMeta
 from pkg_resources import get_distribution, DistributionNotFound, VersionConflict
 from pony.orm import db_session, Database
-from .database import *
 
 
-def load_schema(schema, *args, **kwargs):
-    """
-    Load schema from db with compatible version
-
-    :param schema: schema name for loading
-    """
+def index_core(args):
     major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
+    schema = args.name
 
     db_config = Database()
     LazyEntityMeta.attach(db_config, database='CGRdb_config')
-    db_config.bind('postgres', *args, **kwargs)
+    db_config.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base,
+                   port=args.port)
     db_config.generate_mapping()
 
     with db_session:
@@ -52,12 +47,15 @@ def load_schema(schema, *args, **kwargs):
 
     db = Database()
     LazyEntityMeta.attach(db, schema, 'CGRdb')
-    db.bind('postgres', *args, **kwargs)
+    db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
     db.generate_mapping()
 
     with db_session:
-        db.execute(f'SELECT "{schema}".cgrdb_init_session(\'{dumps(config)}\')')
-    return db
-
-
-__all__ = ['load_schema', 'Molecule', 'Reaction']
+        db.execute(f'CREATE INDEX idx_moleculestructure__smlar ON "{schema}"."MoleculeStructure" USING '
+                   'GIST (fingerprint _int4_sml_ops)')
+        db.execute(f'CREATE INDEX idx_moleculestructure__subst ON "{schema}"."MoleculeStructure" USING '
+                   'GIN (fingerprint gin__int_ops)')
+        db.execute(f'CREATE INDEX idx_reactionindex__smlar ON "{schema}"."ReactionIndex" USING '
+                   'GIST (fingerprint _int4_sml_ops)')
+        db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
+                   'GIN (fingerprint gin__int_ops)')
