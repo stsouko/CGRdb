@@ -36,7 +36,7 @@ create database \[required empty schema 'schema_name' in db\]
 POSTGRES SETUP (Ubuntu 18.04 example)
 -------------------------------------
 
-install  postgresql:
+install  postgresql (required version 10):
 
     sudo apt install postgresql postgresql-server-dev-10 postgresql-plpython3-10
 
