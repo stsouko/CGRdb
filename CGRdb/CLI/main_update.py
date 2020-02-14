@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
-#  Copyright 2019 Adelia Fatykhova <adelik21979@gmail.com>
+#  Copyright 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -18,25 +17,15 @@
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
 from importlib import import_module
-from json import load
 from LazyPony import LazyEntityMeta
 from pkg_resources import get_distribution, DistributionNotFound, VersionConflict
 from pony.orm import db_session, Database
 from ..sql import *
 
 
-def create_core(args):
+def update_core(args):
     major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
     schema = args.name
-    config = args.config and load(args.config) or {}
-    if 'packages' not in config:
-        config['packages'] = []
-    for p in config['packages']:
-        try:
-            p = get_distribution(p)
-            import_module(p.project_name)
-        except (DistributionNotFound, VersionConflict):
-            raise ImportError(f'packages not installed or has invalid versions: {p}')
 
     db_config = Database()
     LazyEntityMeta.attach(db_config, database='CGRdb_config')
@@ -45,33 +34,32 @@ def create_core(args):
     db_config.generate_mapping()
 
     with db_session:
-        if db_config.Config.exists(name=schema):
-            raise KeyError('schema already exists')
+        config = db_config.Config.get(name=schema, version=major_version)
+    if not config:
+        raise KeyError('schema not exists or version incompatible')
+    config = config.config
+
+    for p in config['packages']:
+        try:
+            p = get_distribution(p)
+            import_module(p.project_name)
+        except (DistributionNotFound, VersionConflict):
+            raise ImportError(f'packages not installed or has invalid versions: {p}')
 
     db = Database()
     LazyEntityMeta.attach(db, schema, 'CGRdb')
     db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
-    db.generate_mapping(create_tables=True)
-
-    with db_session:
-        db.execute(f'ALTER TABLE "{schema}"."Reaction" DROP COLUMN structure')
-        db.execute(f'ALTER TABLE "{schema}"."Reaction" RENAME TO "ReactionRecord"')
-        db.execute(f'CREATE VIEW "{schema}"."Reaction" AS SELECT id, NULL::bytea as structure '
-                   f'FROM "{schema}"."ReactionRecord"')
+    db.generate_mapping()
 
     with db_session:
         db.execute(init_session.replace('{schema}', schema))
         db.execute(merge_molecules.replace('{schema}', schema))
 
         db.execute(insert_molecule.replace('{schema}', schema))
-        db.execute(insert_molecule_trigger.replace('{schema}', schema))
         db.execute(after_insert_molecule.replace('{schema}', schema))
-        db.execute(after_insert_molecule_trigger.replace('{schema}', schema))
         db.execute(delete_molecule.replace('{schema}', schema))
-        db.execute(delete_molecule_trigger.replace('{schema}', schema))
 
         db.execute(insert_reaction.replace('{schema}', schema))
-        db.execute(insert_reaction_trigger.replace('{schema}', schema))
 
         db.execute(search_similar_molecules.replace('{schema}', schema))
         db.execute(search_substructure_molecule.replace('{schema}', schema))
@@ -81,17 +69,3 @@ def create_core(args):
         db.execute(search_similar_fingerprint_molecule.replace('{schema}', schema))
         db.execute(search_reactions_by_molecule.replace('{schema}', schema))
         db.execute(search_mappingless_reaction.replace('{schema}', schema))
-
-    if args.indexed:
-        with db_session:
-            db.execute(f'CREATE INDEX idx_moleculestructure__smlar ON "{schema}"."MoleculeStructure" USING '
-                       'GIST (fingerprint _int4_sml_ops)')
-            db.execute(f'CREATE INDEX idx_moleculestructure__subst ON "{schema}"."MoleculeStructure" USING '
-                       'GIN (fingerprint gin__int_ops)')
-            db.execute(f'CREATE INDEX idx_reactionindex__smlar ON "{schema}"."ReactionIndex" USING '
-                       'GIST (fingerprint _int4_sml_ops)')
-            db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
-                       'GIN (fingerprint gin__int_ops)')
-
-    with db_session:
-        db_config.Config(name=schema, config=config, version=major_version)

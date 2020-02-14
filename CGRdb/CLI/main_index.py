@@ -35,7 +35,7 @@ def index_core(args):
     with db_session:
         config = db_config.Config.get(name=schema, version=major_version)
     if not config:
-        raise KeyError('schema not exists')
+        raise KeyError('schema not exists or version incompatible')
     config = config.config
 
     for p in config['packages']:
