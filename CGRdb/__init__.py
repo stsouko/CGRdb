@@ -55,8 +55,9 @@ def load_schema(schema, *args, **kwargs):
     db.bind('postgres', *args, **kwargs)
     db.generate_mapping()
 
-    with db_session:
-        db.execute(f'SELECT "{schema}".cgrdb_init_session(\'{dumps(config)}\')')
+    db.cgr_db_config = db_session()(lambda: db.execute(f'SELECT "{schema}".cgrdb_init_session(\'{dumps(config)}\')')
+                                            and True)
+    db.cgr_db_config()
     return db
 
 
