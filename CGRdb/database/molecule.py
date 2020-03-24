@@ -205,12 +205,15 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
 
     @classmethod
     def find_substructure_fingerprint(cls, fingerprint):
-        if not isinstance(fingerprint, list):
+        if isinstance(fingerprint, (set, tuple)):
+            fingerprint = list(fingerprint)
+        elif not isinstance(fingerprint, list):
             raise TypeError('list of active bits expected')
 
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f'SELECT * FROM "{schema}".cgrdb_search_substructure_fingerprint_molecules({fingerprint}::integer[])')[0]
+            'SELECT * '
+            f'FROM "{schema}".cgrdb_search_substructure_fingerprint_molecules(ARRAY{fingerprint}::integer[])')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -218,12 +221,15 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
 
     @classmethod
     def find_similar_fingerprint(cls, fingerprint):
-        if not isinstance(fingerprint, list):
+        if isinstance(fingerprint, (set, tuple)):
+            fingerprint = list(fingerprint)
+        elif not isinstance(fingerprint, list):
             raise TypeError('list of active bits expected')
 
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f'SELECT * FROM "{schema}".cgrdb_search_similar_fingerprint_molecules({fingerprint}::integer[])')[0]
+            'SELECT * '
+            f'FROM "{schema}".cgrdb_search_similar_fingerprint_molecules(ARRAY{fingerprint}::integer[])')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
