@@ -21,7 +21,7 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_substructure_fingerprint_molecules(fingerprint integer[], OUT id integer, OUT count integer)
 AS $$
 
-sg = hash(frozenset(fingerprint))
+sg = hash(frozenset(fingerprint)).to_bytes(8, byteorder='big', signed=True).hex()
 
 get_cache = f'''SELECT x.id, array_length(x.molecules, 1) count
 FROM "{schema}"."MoleculeSearchCache" x
