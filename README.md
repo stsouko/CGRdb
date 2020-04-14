@@ -78,7 +78,7 @@ restart postgres
 
     sudo systemctl restart postgresql
 
-install `CGRtools`, `CIMtools` and `compress-pickle` into system
+install `CGRtools`, `CIMtools` and `compress-pickle` into system or virtual environment accessible for postgres user.
 
     sudo pip3 install compress-pickle 
     sudo pip3 install git+https://github.com/cimm-kzn/CGRtools.git@master#egg=CGRtools

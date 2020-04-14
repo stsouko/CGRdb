@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019, 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -35,10 +35,16 @@ insert_reaction_trigger = '''CREATE TRIGGER cgrdb_insert_reaction
 init_session = '''CREATE OR REPLACE FUNCTION "{schema}".cgrdb_init_session(cfg json)
 RETURNS VOID
 AS $$
-from CIMtools.preprocessing import FragmentorFingerprint
 from json import loads
 
 config = loads(cfg)
+venv = config.get('environment')
+if venv:
+    activate_this = os.path.join(venv, 'bin', 'activate_this.py')
+    exec(open(activate_this).read(), {'__file__': activate_this})
+
+from CIMtools.preprocessing import FragmentorFingerprint
+
 molecule = config.get('molecule', {})
 reaction = config.get('reaction', {})
 GD['cgrdb_mfp'] = FragmentorFingerprint(**molecule)
