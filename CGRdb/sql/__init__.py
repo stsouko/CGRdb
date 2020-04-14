@@ -40,7 +40,8 @@ from json import loads
 config = loads(cfg)
 venv = config.get('environment')
 if venv:
-    activate_this = os.path.join(venv, 'bin', 'activate_this.py')
+    from os.path import join
+    activate_this = join(venv, 'bin', 'activate_this.py')
     exec(open(activate_this).read(), {'__file__': activate_this})
 
 from CIMtools.preprocessing import FragmentorFingerprint
