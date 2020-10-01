@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019, 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -20,13 +20,14 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_substructure_molecules(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import MoleculeContainer, QueryContainer
+from CGRtools.periodictable import Element
 from compress_pickle import loads
 
 molecule = loads(data, compression='gzip')
 if isinstance(molecule, QueryContainer):
     screen = MoleculeContainer()  # convert query to molecules for screening
     for n, a in molecule.atoms():
-        screen.add_atom(a.copy(), _map=n, charge=a.charge, is_radical=a.is_radical)
+        screen.add_atom(Element.from_atomic_number(a.atomic_number)(a.isotope), _map=n, charge=a.charge, is_radical=a.is_radical)
     for n, m, b in molecule.bonds():
         screen.add_bond(n, m, b)
 elif isinstance(molecule, MoleculeContainer):

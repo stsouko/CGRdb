@@ -73,6 +73,8 @@ def create_core(args):
         db.execute(insert_reaction.replace('{schema}', schema))
         db.execute(insert_reaction_trigger.replace('{schema}', schema))
 
+        db.execute(search_structure_molecule.replace('{schema}', schema))
+        db.execute(search_structure_reaction.replace('{schema}', schema))
         db.execute(search_similar_molecules.replace('{schema}', schema))
         db.execute(search_substructure_molecule.replace('{schema}', schema))
         db.execute(search_similar_reactions.replace('{schema}', schema))

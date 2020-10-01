@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -140,7 +140,11 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        return cls._database_.ReactionIndex.exists(signature=bytes(~structure))
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        fnd = cls._database_.select(
+                f'''SELECT * FROM "{schema}".cgrdb_search_structure_reaction('\\x{structure}'::bytea)''')[0]
+        return bool(fnd)
 
     @classmethod
     def find_structure(cls, structure):
@@ -149,9 +153,12 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        ri = cls._database_.ReactionIndex.get(signature=bytes(~structure))
-        if ri:
-            reaction = ri.reaction
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        fnd = cls._database_.select(
+                f'''SELECT * FROM "{schema}".cgrdb_search_structure_reaction('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            reaction = cls[fnd]
             reaction.structure  # prefetch structure
             return reaction
 

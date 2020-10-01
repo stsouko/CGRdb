@@ -77,6 +77,8 @@ insert_molecule = load_sql('insert_molecule.sql')
 after_insert_molecule = load_sql('after_insert_molecule.sql')
 insert_reaction = load_sql('insert_reaction.sql')
 
+search_structure_molecule = load_sql('find_molecule.sql')
+search_structure_reaction = load_sql('find_reaction.sql')
 search_substructure_molecule = load_sql('substructure_molecule.sql')
 search_substructure_reaction = load_sql('substructure_reaction.sql')
 search_similar_molecules = load_sql('similar_molecule.sql')

@@ -81,7 +81,11 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        return cls._database_.MoleculeStructure.exists(signature=bytes(structure))
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        fnd = cls._database_.select(
+                f'''SELECT * FROM "{schema}".cgrdb_search_structure_molecule('\\x{structure}'::bytea)''')[0]
+        return bool(fnd)
 
     @classmethod
     def find_structure(cls, structure):
@@ -90,8 +94,12 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        ms = cls._database_.MoleculeStructure.get(signature=bytes(structure))
-        if ms:
+        structure = dumps(structure, compression='gzip').hex()
+        schema = cls._table_[0]  # define DB schema
+        fnd = cls._database_.select(
+                f'''SELECT * FROM "{schema}".cgrdb_search_structure_molecule('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            ms = MoleculeStructure[fnd]
             molecule = ms.molecule
             if ms.is_canonic:  # save if structure is canonical
                 molecule.__dict__['structure_entity'] = ms
