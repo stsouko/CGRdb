@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2018, 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2018-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -23,7 +23,7 @@ from pony.orm import Database, db_session
 def init_core(args):
     db = Database()
     LazyEntityMeta.attach(db, database='CGRdb_config')
-    db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
+    db.bind('postgres', **args.connection)
     db.generate_mapping(create_tables=True)
 
     with db_session:

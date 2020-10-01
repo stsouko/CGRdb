@@ -40,8 +40,7 @@ def create_core(args):
 
     db_config = Database()
     LazyEntityMeta.attach(db_config, database='CGRdb_config')
-    db_config.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base,
-                   port=args.port)
+    db_config.bind('postgres', **args.connection)
     db_config.generate_mapping()
 
     with db_session:
@@ -50,7 +49,7 @@ def create_core(args):
 
     db = Database()
     LazyEntityMeta.attach(db, schema, 'CGRdb')
-    db.bind('postgres', user=args.user, password=args.password, host=args.host, database=args.base, port=args.port)
+    db.bind('postgres', **args.connection)
     db.generate_mapping(create_tables=True)
 
     with db_session:
