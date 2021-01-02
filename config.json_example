@@ -1,7 +1,0 @@
-{
- "molecule": {"bits_count": 4, "max_length": 6, "min_length": 2, "bits_active": 2, "fingerprint_size": 12},
- "reaction": {bits_count": 4, "max_length": 6, "min_length": 2, "bits_active": 2, "cgr_dynbonds": 1, "fingerprint_size": 12},
- "packages": ["CGRdbData==4.0.0"],
- "cache_size": 1024,
- "environment": "/path/to/venv/dir"
-}

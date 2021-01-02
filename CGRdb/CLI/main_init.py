@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2018-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2018-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -27,6 +27,5 @@ def init_core(args):
     db.generate_mapping(create_tables=True)
 
     with db_session:
-        db.execute('CREATE EXTENSION IF NOT EXISTS smlar')
         db.execute('CREATE EXTENSION IF NOT EXISTS intarray')
         db.execute('CREATE EXTENSION IF NOT EXISTS plpython3u')

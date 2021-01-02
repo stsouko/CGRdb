@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  Copyright 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
@@ -26,7 +26,8 @@ from ..sql import *
 
 
 def create_core(args):
-    major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
+    version = get_distribution('CGRdb').parsed_version
+    major_version = f'{version.major}.{version.minor}'
     schema = args.name
     config = args.config and load(args.config) or {}
     if 'packages' not in config:
@@ -60,16 +61,16 @@ def create_core(args):
 
     with db_session:
         db.execute(init_session.replace('{schema}', schema))
-        db.execute(merge_molecules.replace('{schema}', schema))
 
         db.execute(insert_molecule.replace('{schema}', schema))
-        db.execute(insert_molecule_trigger.replace('{schema}', schema))
         db.execute(after_insert_molecule.replace('{schema}', schema))
-        db.execute(after_insert_molecule_trigger.replace('{schema}', schema))
         db.execute(delete_molecule.replace('{schema}', schema))
-        db.execute(delete_molecule_trigger.replace('{schema}', schema))
-
         db.execute(insert_reaction.replace('{schema}', schema))
+        db.execute(merge_molecules.replace('{schema}', schema))
+
+        db.execute(insert_molecule_trigger.replace('{schema}', schema))
+        db.execute(after_insert_molecule_trigger.replace('{schema}', schema))
+        db.execute(delete_molecule_trigger.replace('{schema}', schema))
         db.execute(insert_reaction_trigger.replace('{schema}', schema))
 
         db.execute(search_structure_molecule.replace('{schema}', schema))
@@ -78,19 +79,13 @@ def create_core(args):
         db.execute(search_substructure_molecule.replace('{schema}', schema))
         db.execute(search_similar_reactions.replace('{schema}', schema))
         db.execute(search_substructure_reaction.replace('{schema}', schema))
-        db.execute(search_substructure_fingerprint_molecule.replace('{schema}', schema))
-        db.execute(search_similar_fingerprint_molecule.replace('{schema}', schema))
         db.execute(search_reactions_by_molecule.replace('{schema}', schema))
         db.execute(search_mappingless_reaction.replace('{schema}', schema))
 
     if args.indexed:
         with db_session:
-            db.execute(f'CREATE INDEX idx_moleculestructure__smlar ON "{schema}"."MoleculeStructure" USING '
-                       'GIST (fingerprint _int4_sml_ops)')
             db.execute(f'CREATE INDEX idx_moleculestructure__subst ON "{schema}"."MoleculeStructure" USING '
                        'GIN (fingerprint gin__int_ops)')
-            db.execute(f'CREATE INDEX idx_reactionindex__smlar ON "{schema}"."ReactionIndex" USING '
-                       'GIST (fingerprint _int4_sml_ops)')
             db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
                        'GIN (fingerprint gin__int_ops)')
 

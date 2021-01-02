@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -57,7 +57,7 @@ FROM "{schema}"."MoleculeStructure" x JOIN (
 ) mr ON x.molecule = mr.molecule
 GROUP BY mr.reaction ORDER BY mr.reaction'''
 
-cache = lru_cache(cache_size)(lambda x: loads(s, compression='gzip'))
+cache = lru_cache(cache_size)(lambda x: loads(s, compression='lzma'))
 for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
     m2s = defaultdict(list)  # load structures of molecules
     for mi, si, s in zip(ms_row['m'], ms_row['s'], ms_row['d']):

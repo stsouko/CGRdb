@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -26,7 +26,7 @@ from functools import lru_cache
 from json import loads as json_loads
 from itertools import product
 
-reaction = loads(data, compression='gzip')
+reaction = loads(data, compression='lzma')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 
@@ -47,7 +47,7 @@ fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
 
 plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.reaction r, x.structures s, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
+SELECT x.reaction r, x.structures s, icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
 FROM "{schema}"."ReactionIndex" x
 WHERE x.fingerprint @> ARRAY{fp}::integer[]''')
 
@@ -86,7 +86,7 @@ GROUP BY f.r'''
 
 get_rt = 'SELECT f.r, f.t FROM cgrdb_filtered f'
 
-cache = lru_cache(GD['cache_size'])(lambda x: loads(s, compression='gzip'))
+cache = lru_cache(GD['cache_size'])(lambda x: loads(s, compression='lzma'))
 ris, rts = [], []
 for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy.cursor(get_rt)):
     m2s = defaultdict(list)  # load structures of molecules

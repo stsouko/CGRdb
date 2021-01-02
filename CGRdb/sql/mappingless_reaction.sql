@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -23,7 +23,7 @@ from CGRtools.containers import ReactionContainer
 from compress_pickle import loads, dumps
 from itertools import chain, repeat
 
-reaction = loads(data, compression='gzip')
+reaction = loads(data, compression='lzma')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 
@@ -41,7 +41,7 @@ if found:
 # search molecules
 molecules = []  # cached molecules
 for m in chain(reaction.reactants, reaction.products):
-    m = dumps(m, compression='gzip').hex()
+    m = dumps(m, compression='lzma').hex()
     found = plpy.execute(f'''SELECT * FROM "{schema}".cgrdb_search_substructure_molecules('\\x{m}'::bytea)''')[0]
     # check for empty results
     if not found['count']:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -30,7 +30,8 @@ def load_schema(schema, *args, **kwargs):
 
     :param schema: schema name for loading
     """
-    major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
+    version = get_distribution('CGRdb').parsed_version
+    major_version = f'{version.major}.{version.minor}'
 
     db_config = Database()
     LazyEntityMeta.attach(db_config, database='CGRdb_config')
@@ -56,7 +57,7 @@ def load_schema(schema, *args, **kwargs):
     db.generate_mapping()
 
     init = f'SELECT "{schema}".cgrdb_init_session(\'{dumps(config)}\')'
-    db.cgrdb_init_session = db_session()(lambda: db.execute(init) and True)
+    db.cgrdb_init_session = db_session()(lambda: db.execute(init) and True or False)
     db.cgrdb_init_session()
     return db
 

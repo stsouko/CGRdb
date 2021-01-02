@@ -1,5 +1,5 @@
 /*
-#  Copyright 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2020, 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -22,7 +22,7 @@ AS $$
 from CGRtools.containers import MoleculeContainer
 from compress_pickle import loads
 
-molecule = loads(data, compression='gzip')
+molecule = loads(data, compression='lzma')
 if not isinstance(molecule, MoleculeContainer):
     raise plpy.spiexceptions.DataException('MoleculeContainer required')
 

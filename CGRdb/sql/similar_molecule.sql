@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -17,12 +17,12 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_search_similar_molecules(data bytea, OUT id integer, OUT count integer)
+"{schema}".cgrdb_search_similar_molecules(data bytea, threshold float, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import MoleculeContainer
 from compress_pickle import loads
 
-molecule = loads(data, compression='gzip')
+molecule = loads(data, compression='lzma')
 if not isinstance(molecule, MoleculeContainer):
     raise plpy.spiexceptions.DataException('MoleculeContainer required')
 
@@ -42,9 +42,14 @@ fp = GD['cgrdb_mfp'].transform_bitset([molecule])[0]
 
 plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.molecule m, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
-FROM "{schema}"."MoleculeStructure" x
-WHERE x.fingerprint % ARRAY{fp}::integer[]''')
+SELECT c.m, c.t
+FROM (
+    SELECT x.molecule m,
+           icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
+    FROM "{schema}"."MoleculeStructure" x
+    WHERE x.fingerprint && ARRAY{fp}::integer[]
+) c
+WHERE c.t > {threshold}''')
 
 # check for empty results
 if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:

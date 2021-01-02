@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <stsouko@live.ru>
+#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -22,7 +22,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-version = '4.0.2'
+version = '4.1.0'
 
 
 setup(
@@ -30,16 +30,15 @@ setup(
     version=version,
     packages=find_packages(),
     url='https://github.com/stsouko/CGRdb',
-    license='AGPLv3',
+    license='LGPLv3',
     author='Dr. Ramil Nugmanov',
-    author_email='stsouko@live.ru',
+    author_email='nougmanoff@protonmail.com',
     python_requires='>=3.6.0',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=4.0.14,<4.1', 'CIMtools>=4.0.1,<4.1', 'LazyPony>=0.3.1,<0.4',
-                      'CachedMethods>=0.1.4,<0.2', 'pony>=0.7.11,<0.8', 'compress-pickle>=1.1'],
-    extras_require={'postgres':  ['psycopg2-binary'],
-                    'postgres_cffi':  ['cffi', 'psycopg2cffi'],
-                    'autocomplete': ['argcomplete']},
+    install_requires=['CGRtools>=4.1.1,<4.2', 'LazyPony>=0.3.1,<0.4', 'StructureFingerprint>=1.21',
+                      'CachedMethods>=0.1.4,<0.2', 'pony>=0.7.14,<0.8', 'compress-pickle>=1.1',
+                      'psycopg2-binary>=2.8.6'],
+    extras_require={'autocomplete': ['argcomplete']},
     package_data={'CGRdb.sql': [x for x in listdir(Path(__file__).parent / 'CGRdb' / 'sql') if x.endswith('.sql')]},
     long_description=(Path(__file__).parent / 'README.md').open().read(),
     classifiers=['Environment :: Plugins',
@@ -47,10 +46,12 @@ setup(
                  'Intended Audience :: Developers',
                  'Topic :: Scientific/Engineering :: Chemistry',
                  'Topic :: Software Development :: Libraries :: Python Modules',
-                 'License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)',
+                 'License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)',
                  'Operating System :: OS Independent',
                  'Programming Language :: Python',
                  'Programming Language :: Python :: 3',
                  'Programming Language :: Python :: 3.6',
+                 'Programming Language :: Python :: 3.7',
+                 'Programming Language :: Python :: 3.8',
                  ]
 )

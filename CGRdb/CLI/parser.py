@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #
 #  Copyright 2017 Boris Sattarov <brois475@gmail.com>
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -20,6 +20,7 @@
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter, FileType
 from importlib.util import find_spec
 from json import loads
+from .main_clean import clean_core
 from .main_create import create_core
 from .main_index import index_core
 from .main_init import init_core
@@ -38,13 +39,13 @@ def create_db(subparsers):
                                    formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--connection', '-c', default='{}', type=loads, help='db connection params. see pony db.bind')
     parser.add_argument('--name', '-n', help='schema name', required=True)
-    parser.add_argument('--no-index', help='without search indexes', dest='indexed', action='store_false')
+    parser.add_argument('--no-index', help='without search index', dest='indexed', action='store_false')
     parser.add_argument('--config', '-f', default=None, type=FileType(), help='database config in JSON format')
     parser.set_defaults(func=create_core)
 
 
 def create_index(subparsers):
-    parser = subparsers.add_parser('index', help='create search indexes',
+    parser = subparsers.add_parser('index', help='create substructure search index',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--connection', '-c', default='{}', type=loads, help='db connection params. see pony db.bind')
     parser.add_argument('--name', '-n', help='schema name', required=True)
@@ -52,11 +53,19 @@ def create_index(subparsers):
 
 
 def update_db(subparsers):
-    parser = subparsers.add_parser('update', help='update functions in db',
+    parser = subparsers.add_parser('update', help='update sql functions in db',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--connection', '-c', default='{}', type=loads, help='db connection params. see pony db.bind')
     parser.add_argument('--name', '-n', help='schema name', required=True)
     parser.set_defaults(func=update_core)
+
+
+def clean_cache(subparsers):
+    parser = subparsers.add_parser('clean', help='clean cache table in db',
+                                   formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--connection', '-c', default='{}', type=loads, help='db connection params. see pony db.bind')
+    parser.add_argument('--name', '-n', help='schema name', required=True)
+    parser.set_defaults(func=clean_core)
 
 
 def argparser():
@@ -67,6 +76,7 @@ def argparser():
     init_db(subparsers)
     create_index(subparsers)
     update_db(subparsers)
+    clean_cache(subparsers)
 
     if find_spec('argcomplete'):
         from argcomplete import autocomplete

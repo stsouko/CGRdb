@@ -1,0 +1,7 @@
+{
+ "molecule": {"number_bit_pairs": 4, "max_radius": 6, "min_radius": 1, "number_active_bits": 2, "length": 2048},
+ "reaction": {"number_bit_pairs": 4, "max_radius": 6, "min_radius": 1, "number_active_bits": 2, "length": 2048},
+ "packages": [],
+ "cache_size": 1024,
+ "environment": "/path/to/venv/dir/with_same_python_version"
+}

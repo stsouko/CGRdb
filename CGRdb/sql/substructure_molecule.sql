@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019, 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -23,7 +23,7 @@ from CGRtools.containers import MoleculeContainer, QueryContainer
 from CGRtools.periodictable import Element
 from compress_pickle import loads
 
-molecule = loads(data, compression='gzip')
+molecule = loads(data, compression='lzma')
 if isinstance(molecule, QueryContainer):
     screen = MoleculeContainer()  # convert query to molecules for screening
     for n, a in molecule.atoms():
@@ -51,7 +51,7 @@ fp = GD['cgrdb_mfp'].transform_bitset([screen])[0]
 
 plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.molecule m, x.id s, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
+SELECT x.molecule m, x.id s, icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
 FROM "{schema}"."MoleculeStructure" x
 WHERE x.fingerprint @> ARRAY{fp}::integer[]''')
 
@@ -79,7 +79,7 @@ FROM (
 ORDER BY h.t DESC'''
 mis, sts = [], []
 for row in plpy.cursor(get_data):
-    if molecule <= loads(row['d'], compression='gzip'):
+    if molecule <= loads(row['d'], compression='lzma'):
         mis.append(row['m'])
         sts.append(row['t'])
 

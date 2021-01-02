@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -17,7 +17,7 @@
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
 from CachedMethods import cached_property
-from CGRtools.containers import ReactionContainer
+from CGRtools.containers import ReactionContainer, MoleculeContainer, QueryContainer
 from collections import defaultdict
 from compress_pickle import dumps
 from datetime import datetime
@@ -37,7 +37,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         storing reaction in DB.
         :param structure: CGRtools ReactionContainer
         """
-        super().__init__(_structure=dumps(structure, compression='gzip'))
+        super().__init__(_structure=dumps(structure, compression='lzma'))
 
     def __str__(self):
         """
@@ -140,7 +140,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_reaction('\\x{structure}'::bytea)''')[0]
@@ -153,7 +153,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_reaction('\\x{structure}'::bytea)''')[0]
@@ -177,7 +177,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_substructure_reactions('\\x{structure}'::bytea)''')[0]
@@ -187,11 +187,12 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
-    def find_similar(cls, structure):
+    def find_similar(cls, structure, *, threshold=.7):
         """
         similarity search
 
         :param structure: CGRtools ReactionContainer
+        :param threshold: Tanimoto similarity threshold
         :return: ReactionSearchCache object with all found reactions or None
         """
         if not isinstance(structure, ReactionContainer):
@@ -199,10 +200,10 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f'''SELECT * FROM "{schema}".cgrdb_search_similar_reactions('\\x{structure}'::bytea)''')[0]
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_reactions('\\x{structure}'::bytea, {threshold})''')[0]
         if fnd:
             c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -221,10 +222,71 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants and not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_mappingless_substructure_reactions('\\x{structure}'::bytea)''')[0]
+        if fnd:
+            c = cls._database_.ReactionSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_substructure_reactions(cls, structure, is_product: Optional[bool] = None):
+        """
+        search reactions including substructure molecules
+
+        :param structure: CGRtools MoleculeContainer or QueryContainer
+        :param is_product: role of molecule: Reactant = False, Product = True, Any = None
+        :return:ReactionSearchCache object with all found reactions or None
+        """
+        if not isinstance(structure, (MoleculeContainer, QueryContainer)):
+            raise TypeError('Molecule or Query expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        if is_product is None:
+            role = 0
+        elif isinstance(is_product, bool):
+            role = 2 if is_product else 1
+        else:
+            raise ValueError('invalid role')
+
+        structure = dumps(structure, compression='lzma').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(f'''SELECT * FROM 
+            "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 1, 0)''')[0]
+        if fnd:
+            c = cls._database_.ReactionSearchCache[ci]
+            c.__dict__['_size'] = fnd
+            return c
+
+    @classmethod
+    def find_similar_reactions(cls, structure, is_product: Optional[bool] = None, *, threshold=.7):
+        """
+        search reactions including similar molecules
+
+        :param structure: CGRtools MoleculeContainer
+        :param is_product: role of molecule: Reactant = False, Product = True, Any = None
+        :param threshold: Tanimoto similarity threshold
+        :return:ReactionSearchCache object with all found reactions or None
+        """
+        if not isinstance(structure, MoleculeContainer):
+            raise TypeError('Molecule expected')
+        elif not len(structure):
+            raise ValueError('empty query')
+
+        if is_product is None:
+            role = 0
+        elif isinstance(is_product, bool):
+            role = 2 if is_product else 1
+        else:
+            raise ValueError('invalid role')
+
+        structure = dumps(structure, compression='lzma').hex()
+        schema = cls._table_[0]  # define DB schema
+        ci, fnd = cls._database_.select(f'''SELECT * FROM
+            "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 2, {threshold})''')[0]
         if fnd:
             c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -270,8 +332,8 @@ class MoleculeReaction(metaclass=LazyEntityMeta, database='CGRdb'):
 class ReactionIndex(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     reaction = Required('Reaction')
-    signature = Required(bytes, unique=True, volatile=True, lazy=True)
-    fingerprint = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True)
+    _signature = Required(bytes, unique=True, volatile=True, lazy=True, column='signature')
+    _fingerprint = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True, column='fingerprint')
     _structures = Required(IntArray, optimistic=False, index=False, lazy=True, volatile=True, column='structures')
 
 

@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -17,12 +17,12 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_search_similar_reactions(data bytea, OUT id integer, OUT count integer)
+"{schema}".cgrdb_search_similar_reactions(data bytea, threshold float, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import ReactionContainer
 from compress_pickle import loads
 
-reaction = loads(data, compression='gzip')
+reaction = loads(data, compression='lzma')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 
@@ -43,9 +43,14 @@ fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
 
 plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
 plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.reaction r, smlar(x.fingerprint, ARRAY{fp}::integer[]) t
-FROM "{schema}"."ReactionIndex" x
-WHERE x.fingerprint % ARRAY{fp}::integer[]''')
+SELECT c.r, c.t
+FROM (
+    SELECT x.reaction r,
+           icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
+    FROM "{schema}"."ReactionIndex" x
+    WHERE x.fingerprint && ARRAY{fp}::integer[]
+) c
+WHERE c.t > {threshold}''')
 
 # check for empty results
 if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:

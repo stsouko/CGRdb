@@ -1,5 +1,5 @@
 /*
-#  Copyright 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2020, 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -22,7 +22,7 @@ AS $$
 from CGRtools.containers import ReactionContainer
 from compress_pickle import loads
 
-reaction = loads(data, compression='gzip')
+reaction = loads(data, compression='lzma')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 

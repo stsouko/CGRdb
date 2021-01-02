@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2019, 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -44,12 +44,12 @@ if venv:
     activate_this = join(venv, 'bin', 'activate_this.py')
     exec(open(activate_this).read(), {'__file__': activate_this})
 
-from CIMtools.preprocessing import FragmentorFingerprint
+from StructureFingerprint import LinearFingerprint
 
 molecule = config.get('molecule', {})
 reaction = config.get('reaction', {})
-GD['cgrdb_mfp'] = FragmentorFingerprint(**molecule)
-GD['cgrdb_rfp'] = FragmentorFingerprint(**reaction)
+GD['cgrdb_mfp'] = LinearFingerprint(**molecule)
+GD['cgrdb_rfp'] = LinearFingerprint(**reaction)
 GD['cache_size'] = config.get('cache_size', 256)
 
 $$ LANGUAGE plpython3u'''.replace('$', '$$')
@@ -83,9 +83,16 @@ search_substructure_molecule = load_sql('substructure_molecule.sql')
 search_substructure_reaction = load_sql('substructure_reaction.sql')
 search_similar_molecules = load_sql('similar_molecule.sql')
 search_similar_reactions = load_sql('similar_reaction.sql')
-search_substructure_fingerprint_molecule = load_sql('substructure_fingerprint_molecule.sql')
-search_similar_fingerprint_molecule = load_sql('similar_fingerprint_molecule.sql')
 search_reactions_by_molecule = load_sql('reaction_by_molecule.sql')
 search_mappingless_reaction = load_sql('mappingless_reaction.sql')
 
 merge_molecules = load_sql('merge_molecules.sql')
+
+
+__all__ = ['init_session', 'insert_molecule', 'after_insert_molecule', 'delete_molecule',
+           'insert_molecule_trigger', 'after_insert_molecule_trigger', 'delete_molecule_trigger',
+           'insert_reaction', 'insert_reaction_trigger', 'merge_molecules',
+           'search_structure_molecule', 'search_structure_reaction',
+           'search_substructure_molecule', 'search_substructure_reaction',
+           'search_reactions_by_molecule', 'search_mappingless_reaction',
+           'search_similar_molecules', 'search_similar_reactions']

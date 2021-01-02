@@ -1,5 +1,5 @@
 /*
-#  Copyright 2019 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2019-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -27,7 +27,7 @@ from itertools import chain, product, repeat
 
 rfp = GD['cgrdb_rfp']
 data = TD['new']
-reaction = loads(data['structure'], compression='gzip')
+reaction = loads(data['structure'], compression='lzma')
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 elif not reaction.reactants or not reaction.products:
@@ -48,7 +48,7 @@ while True:
     for row in plpy.execute(load):
         sg = row['signature']
         sg2m[sg] = mi = row['molecule']
-        sg2c[sg] = c = loads(row['structure'], compression='gzip')  # structure with mapping as in db
+        sg2c[sg] = c = loads(row['structure'], compression='lzma')  # structure with mapping as in db
         m2c[mi].append(c)
         m2ms[mi].append(row['id'])
 
@@ -64,7 +64,7 @@ while True:
                 mis = [x['id'] for x in plpy.execute('INSERT INTO "{schema}"."Molecule" (id) VALUES %s RETURNING id' % \
                        ', '.join(['(DEFAULT)'] * len(new)))]
                 insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule) VALUES %s RETURNING id' % \
-                         ', '.join(f"('\\x{dumps(s, compression='gzip').hex()}'::bytea, {m})"
+                         ', '.join(f"('\\x{dumps(s, compression='lzma', optimize=True, preset=9).hex()}'::bytea, {m})"
                                    for m, s in zip(mis, new.values()))
                 sis = [x['id'] for x in plpy.execute(insert)]
         except plpy.SPIError:
@@ -89,7 +89,7 @@ for c, is_p in chain(zip(reaction.reactants, repeat(False)), zip(reaction.produc
         mapping.append((mi, is_p, 'NULL'))
         duplicates.append(sg)
     else:
-        mp = next(sg2c[sg].get_mapping(c, automorphism_filter=False))
+        mp = next(sg2c[sg].get_fast_mapping(c))
         plain_reaction.append([(m.remap(mp, copy=True), si) for m, si in zip(m2c[mi], m2ms[mi])])
         mp = [[k, v] for k, v in mp.items() if k != v]
         mapping.append((mi, is_p, mp and f"'{mp}'" or 'NULL'))

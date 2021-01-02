@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -20,10 +20,9 @@ from importlib import import_module
 from LazyPony import LazyEntityMeta
 from pkg_resources import get_distribution, DistributionNotFound, VersionConflict
 from pony.orm import db_session, Database
-from ..sql import *
 
 
-def update_core(args):
+def clean_core(args):
     version = get_distribution('CGRdb').parsed_version
     major_version = f'{version.major}.{version.minor}'
     schema = args.name
@@ -52,19 +51,5 @@ def update_core(args):
     db.generate_mapping()
 
     with db_session:
-        db.execute(init_session.replace('{schema}', schema))
-
-        db.execute(insert_molecule.replace('{schema}', schema))
-        db.execute(after_insert_molecule.replace('{schema}', schema))
-        db.execute(delete_molecule.replace('{schema}', schema))
-        db.execute(insert_reaction.replace('{schema}', schema))
-        db.execute(merge_molecules.replace('{schema}', schema))
-
-        db.execute(search_structure_molecule.replace('{schema}', schema))
-        db.execute(search_structure_reaction.replace('{schema}', schema))
-        db.execute(search_similar_molecules.replace('{schema}', schema))
-        db.execute(search_substructure_molecule.replace('{schema}', schema))
-        db.execute(search_similar_reactions.replace('{schema}', schema))
-        db.execute(search_substructure_reaction.replace('{schema}', schema))
-        db.execute(search_reactions_by_molecule.replace('{schema}', schema))
-        db.execute(search_mappingless_reaction.replace('{schema}', schema))
+        db.execute(f'TRUNCATE TABLE "{schema}"."MoleculeSearchCache", '
+                   f'"{schema}"."ReactionSearchCache" RESTART IDENTITY')

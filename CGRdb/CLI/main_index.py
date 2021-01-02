@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2020, 2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -23,7 +23,8 @@ from pony.orm import db_session, Database
 
 
 def index_core(args):
-    major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
+    version = get_distribution('CGRdb').parsed_version
+    major_version = f'{version.major}.{version.minor}'
     schema = args.name
 
     db_config = Database()
@@ -50,11 +51,7 @@ def index_core(args):
     db.generate_mapping()
 
     with db_session:
-        db.execute(f'CREATE INDEX idx_moleculestructure__smlar ON "{schema}"."MoleculeStructure" USING '
-                   'GIST (fingerprint _int4_sml_ops)')
         db.execute(f'CREATE INDEX idx_moleculestructure__subst ON "{schema}"."MoleculeStructure" USING '
                    'GIN (fingerprint gin__int_ops)')
-        db.execute(f'CREATE INDEX idx_reactionindex__smlar ON "{schema}"."ReactionIndex" USING '
-                   'GIST (fingerprint _int4_sml_ops)')
         db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
                    'GIN (fingerprint gin__int_ops)')

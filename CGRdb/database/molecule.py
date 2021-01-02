@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  Copyright 2019 Adelia Fatykhova <adelik21979@gmail.com>
 #  This file is part of CGRdb.
 #
@@ -23,7 +23,7 @@ from compress_pickle import dumps, loads
 from datetime import datetime
 from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
-from typing import Dict, Optional
+from typing import Dict
 
 
 class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -81,7 +81,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_molecule('\\x{structure}'::bytea)''')[0]
@@ -94,7 +94,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_molecule('\\x{structure}'::bytea)''')[0]
@@ -120,7 +120,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_substructure_molecules('\\x{structure}'::bytea)''')[0]
@@ -130,11 +130,12 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
-    def find_similar(cls, structure):
+    def find_similar(cls, structure, *, threshold=.7):
         """
         similarity search
 
         :param structure: CGRtools MoleculeContainer
+        :param threshold: Tanimoto similarity threshold
         :return: MoleculeSearchCache object with all found molecules or None
         """
         if not isinstance(structure, MoleculeContainer):
@@ -142,102 +143,10 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='gzip').hex()
+        structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea)''')[0]
-        if fnd:
-            c = cls._database_.MoleculeSearchCache[ci]
-            c.__dict__['_size'] = fnd
-            return c
-
-    @classmethod
-    def find_substructure_reactions(cls, structure, is_product: Optional[bool] = None):
-        """
-        search reactions including substructure molecules
-
-        :param structure: CGRtools MoleculeContainer or QueryContainer
-        :param is_product: role of molecule: Reactant = False, Product = True, Any = None
-        :return:ReactionSearchCache object with all found reactions or None
-        """
-        if not isinstance(structure, (MoleculeContainer, QueryContainer)):
-            raise TypeError('Molecule or Query expected')
-        elif not len(structure):
-            raise ValueError('empty query')
-
-        if is_product is None:
-            role = 0
-        elif isinstance(is_product, bool):
-            role = 2 if is_product else 1
-        else:
-            raise ValueError('invalid role')
-
-        structure = dumps(structure, compression='gzip').hex()
-        schema = cls._table_[0]  # define DB schema
-        ci, fnd = cls._database_.select(
-            f'''SELECT * FROM "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 1)''')[0]
-        if fnd:
-            c = cls._database_.ReactionSearchCache[ci]
-            c.__dict__['_size'] = fnd
-            return c
-
-    @classmethod
-    def find_similar_reactions(cls, structure, is_product: Optional[bool] = None):
-        """
-        search reactions including similar molecules
-
-        :param structure: CGRtools MoleculeContainer
-        :param is_product: role of molecule: Reactant = False, Product = True, Any = None
-        :return:ReactionSearchCache object with all found reactions or None
-        """
-        if not isinstance(structure, MoleculeContainer):
-            raise TypeError('Molecule expected')
-        elif not len(structure):
-            raise ValueError('empty query')
-
-        if is_product is None:
-            role = 0
-        elif isinstance(is_product, bool):
-            role = 2 if is_product else 1
-        else:
-            raise ValueError('invalid role')
-
-        structure = dumps(structure, compression='gzip').hex()
-        schema = cls._table_[0]  # define DB schema
-        ci, fnd = cls._database_.select(
-            f'''SELECT * FROM "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 2)''')[0]
-        if fnd:
-            c = cls._database_.ReactionSearchCache[ci]
-            c.__dict__['_size'] = fnd
-            return c
-
-    @classmethod
-    def find_substructure_fingerprint(cls, fingerprint):
-        if isinstance(fingerprint, (set, tuple)):
-            fingerprint = list(fingerprint)
-        elif not isinstance(fingerprint, list):
-            raise TypeError('list of active bits expected')
-
-        schema = cls._table_[0]  # define DB schema
-        ci, fnd = cls._database_.select(
-            'SELECT * '
-            f'FROM "{schema}".cgrdb_search_substructure_fingerprint_molecules(ARRAY{fingerprint}::integer[])')[0]
-        if fnd:
-            c = cls._database_.MoleculeSearchCache[ci]
-            c.__dict__['_size'] = fnd
-            return c
-
-    @classmethod
-    def find_similar_fingerprint(cls, fingerprint):
-        if isinstance(fingerprint, (set, tuple)):
-            fingerprint = list(fingerprint)
-        elif not isinstance(fingerprint, list):
-            raise TypeError('list of active bits expected')
-
-        schema = cls._table_[0]  # define DB schema
-        ci, fnd = cls._database_.select(
-            'SELECT * '
-            f'FROM "{schema}".cgrdb_search_similar_fingerprint_molecules(ARRAY{fingerprint}::integer[])')[0]
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea, {threshold})''')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -299,19 +208,31 @@ class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
     id = PrimaryKey(int, auto=True)
     molecule = Required('Molecule')
     is_canonic = Required(bool, optimistic=False, volatile=True)
-    signature = Required(bytes, unique=True, volatile=True, lazy=True)
-    fingerprint = Required(IntArray, optimistic=False, lazy=True, volatile=True)
+    _signature = Required(bytes, unique=True, volatile=True, lazy=True, column='signature')
+    _fingerprint = Required(IntArray, optimistic=False, lazy=True, volatile=True, column='fingerprint')
     _structure = Required(bytes, optimistic=False, column='structure')
 
     def __init__(self, **kwargs):
         structure = kwargs.pop('structure')
         if not isinstance(structure, MoleculeContainer):
             raise TypeError('molecule expected')
-        super().__init__(_structure=dumps(structure, compression='gzip'), **kwargs)
+        super().__init__(_structure=dumps(structure, compression='lzma', optimize=True, preset=9), **kwargs)
 
     @cached_property
     def structure(self):
-        return loads(self._structure, compression='gzip')
+        return loads(self._structure, compression='lzma')
+
+    def __str__(self):
+        """
+        signature of structure
+        """
+        return str(self.structure)
+
+    def __bytes__(self):
+        """
+        hashed signature of structure
+        """
+        return bytes(self.structure)
 
 
 class MoleculeSearchCache(metaclass=LazyEntityMeta, database='CGRdb'):
