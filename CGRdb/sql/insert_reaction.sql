@@ -89,7 +89,7 @@ for c, is_p in chain(zip(reaction.reactants, repeat(False)), zip(reaction.produc
         mapping.append((mi, is_p, 'NULL'))
         duplicates.append(sg)
     else:
-        mp = next(sg2c[sg].get_fast_mapping(c))
+        mp = sg2c[sg].get_fast_mapping(c)
         plain_reaction.append([(m.remap(mp, copy=True), si) for m, si in zip(m2c[mi], m2ms[mi])])
         mp = [[k, v] for k, v in mp.items() if k != v]
         mapping.append((mi, is_p, mp and f"'{mp}'" or 'NULL'))
@@ -99,9 +99,10 @@ cgrs = []
 sis = []
 sgs = []
 for r in product(*plain_reaction):
-    c = ~ReactionContainer([c for c, _ in r[:lr]], [c for c, _ in r[lr:]])
-    cgrs.append(c)
     sis.append(list({si for _, si in r}))
+    r = ReactionContainer([c for c, _ in r[:lr]], [c for c, _ in r[lr:]])
+    c = ~r
+    cgrs.append(c)
     sgs.append(bytes(c).hex())  # preload signature
 fps = rfp.transform_bitset(cgrs)
 

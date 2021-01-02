@@ -24,6 +24,7 @@ from datetime import datetime
 from itertools import product
 from LazyPony import LazyEntityMeta
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray, composite_key, raw_sql
+from typing import Optional as tOptional
 
 
 class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
@@ -232,7 +233,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
-    def find_substructure_reactions(cls, structure, is_product: Optional[bool] = None):
+    def find_substructure_reactions(cls, structure, is_product: tOptional[bool] = None):
         """
         search reactions including substructure molecules
 
@@ -262,7 +263,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
-    def find_similar_reactions(cls, structure, is_product: Optional[bool] = None, *, threshold=.7):
+    def find_similar_reactions(cls, structure, is_product: tOptional[bool] = None, *, threshold=.7):
         """
         search reactions including similar molecules
 
