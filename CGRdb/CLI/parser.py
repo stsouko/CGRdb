@@ -22,6 +22,7 @@ from importlib.util import find_spec
 from json import loads
 from .main_clean import clean_core
 from .main_create import create_core
+from .main_daemon import daemon_core
 from .main_index import index_core
 from .main_init import init_core
 from .main_update import update_core
@@ -69,6 +70,14 @@ def clean_cache(subparsers):
     parser.set_defaults(func=clean_core)
 
 
+def run_daemon(subparsers):
+    parser = subparsers.add_parser('daemon', help='index daemon',
+                                   formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--params', '-p', default='{}', type=loads, help='aiohttp run_app params')
+    parser.add_argument('--data', '-d', type=FileType(mode='rb'), required=True, help='dump of index')
+    parser.set_defaults(func=daemon_core)
+
+
 def argparser():
     parser = ArgumentParser(description="CGRdb", epilog="(c) Dr. Ramil Nugmanov", prog='cgrdb')
     subparsers = parser.add_subparsers(title='subcommands', description='available utilities')
@@ -78,6 +87,7 @@ def argparser():
     create_index(subparsers)
     update_db(subparsers)
     clean_cache(subparsers)
+    run_daemon(subparsers)
 
     if find_spec('argcomplete'):
         from argcomplete import autocomplete

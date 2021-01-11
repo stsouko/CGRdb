@@ -26,7 +26,7 @@ from typing import Collection, Tuple, List, Optional, Union
 
 
 class SimilarityIndex:
-    def __init__(self, fingerprints: Collection[Tuple[int, Collection[int]]], check_threshold: Optional[float] = None,
+    def __init__(self, fingerprints: Collection[Tuple[int, Collection[int]]], check_threshold: Optional[float] = .7,
                  threshold: float = .6, num_perm: int = 64, n_workers: int = 1, chunk_size: int = 10000):
         """
         MinHashLSH based similarity search index.
