@@ -18,13 +18,15 @@
 #
 from importlib import import_module
 from LazyPony import LazyEntityMeta
+from pickle import dump
 from pkg_resources import get_distribution, DistributionNotFound, VersionConflict
 from pony.orm import db_session, Database
 
 
 def index_core(args):
-    version = get_distribution('CGRdb').parsed_version
-    major_version = f'{version.major}.{version.minor}'
+    from ..index import SimilarityIndex, SubstructureIndex
+
+    major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
     schema = args.name
 
     db_config = Database()
@@ -50,8 +52,23 @@ def index_core(args):
     db.bind('postgres', **args.connection)
     db.generate_mapping()
 
+    if 'check_threshold' in args.params:
+        sort_by_tanimoto = args.params['check_threshold'] is not None
+    else:
+        sort_by_tanimoto = True
+
     with db_session:
-        db.execute(f'CREATE INDEX idx_moleculestructure__subst ON "{schema}"."MoleculeStructure" USING '
-                   'GIN (fingerprint gin__int_ops)')
-        db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
-                   'GIN (fingerprint gin__int_ops)')
+        substructure_molecule = SubstructureIndex(
+                db.execute(f'SELECT id, fingerprint FROM "{schema}"."MoleculeStructure"'),
+                sort_by_tanimoto)
+    with db_session:
+        similarity_molecule = SimilarityIndex(
+                db.execute(f'SELECT molecule, fingerprint FROM "{schema}"."MoleculeStructure"'), **args.params)
+    with db_session:
+        substructure_reaction = SubstructureIndex(db.execute(f'SELECT id, fingerprint FROM "{schema}"."ReactionIndex"'),
+                                                  sort_by_tanimoto)
+    with db_session:
+        similarity_reaction = SimilarityIndex(
+                db.execute(f'SELECT reaction, fingerprint FROM "{schema}"."ReactionIndex"'), **args.params)
+
+    dump((substructure_molecule, substructure_reaction, similarity_molecule, similarity_reaction), args.data)

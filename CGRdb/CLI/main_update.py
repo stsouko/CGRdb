@@ -24,8 +24,7 @@ from ..sql import *
 
 
 def update_core(args):
-    version = get_distribution('CGRdb').parsed_version
-    major_version = f'{version.major}.{version.minor}'
+    major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
     schema = args.name
 
     db_config = Database()

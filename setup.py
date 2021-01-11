@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-#  Copyright 2017-2020 Ramil Nugmanov <nougmanoff@protonmail.com>
+#  Copyright 2017-2021 Ramil Nugmanov <nougmanoff@protonmail.com>
 #  This file is part of CGRdb.
 #
 #  CGRdb is free software; you can redistribute it and/or modify
@@ -33,12 +33,13 @@ setup(
     license='LGPLv3',
     author='Dr. Ramil Nugmanov',
     author_email='nougmanoff@protonmail.com',
-    python_requires='>=3.6.0',
+    python_requires='>=3.8.0',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
     install_requires=['CGRtools>=4.1.6,<4.2', 'LazyPony>=0.3.1,<0.4', 'StructureFingerprint>=1.21',
                       'CachedMethods>=0.1.4,<0.2', 'pony>=0.7.14,<0.8', 'compress-pickle>=1.1',
                       'psycopg2-binary>=2.8.6'],
-    extras_require={'autocomplete': ['argcomplete']},
+    extras_require={'autocomplete': ['argcomplete'],
+                    'index': ['pyroaring>=0.2.9', 'aiohttp>=3.7', 'datasketch>=1.5.3', 'tqdm>=4.55']},
     package_data={'CGRdb.sql': [x for x in listdir(Path(__file__).parent / 'CGRdb' / 'sql') if x.endswith('.sql')]},
     long_description=(Path(__file__).parent / 'README.md').open().read(),
     classifiers=['Environment :: Plugins',
@@ -50,8 +51,6 @@ setup(
                  'Operating System :: OS Independent',
                  'Programming Language :: Python',
                  'Programming Language :: Python :: 3',
-                 'Programming Language :: Python :: 3.6',
-                 'Programming Language :: Python :: 3.7',
                  'Programming Language :: Python :: 3.8',
                  ]
 )

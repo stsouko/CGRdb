@@ -39,16 +39,17 @@ def create_db(subparsers):
                                    formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--connection', '-c', default='{}', type=loads, help='db connection params. see pony db.bind')
     parser.add_argument('--name', '-n', help='schema name', required=True)
-    parser.add_argument('--no-index', help='without search index', dest='indexed', action='store_false')
     parser.add_argument('--config', '-f', default=None, type=FileType(), help='database config in JSON format')
     parser.set_defaults(func=create_core)
 
 
 def create_index(subparsers):
-    parser = subparsers.add_parser('index', help='create substructure search index',
+    parser = subparsers.add_parser('index', help='create substructure and similarity index',
                                    formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('--connection', '-c', default='{}', type=loads, help='db connection params. see pony db.bind')
     parser.add_argument('--name', '-n', help='schema name', required=True)
+    parser.add_argument('--params', '-p', default='{}', type=loads, help='indexation params')
+    parser.add_argument('--data', '-d', type=FileType(mode='wb'), required=True, help='dump of index')
     parser.set_defaults(func=index_core)
 
 

@@ -26,8 +26,7 @@ from ..sql import *
 
 
 def create_core(args):
-    version = get_distribution('CGRdb').parsed_version
-    major_version = f'{version.major}.{version.minor}'
+    major_version = '.'.join(get_distribution('CGRdb').version.split('.')[:-1])
     schema = args.name
     config = args.config and load(args.config) or {}
     if 'packages' not in config:
@@ -81,13 +80,6 @@ def create_core(args):
         db.execute(search_substructure_reaction.replace('{schema}', schema))
         db.execute(search_reactions_by_molecule.replace('{schema}', schema))
         db.execute(search_mappingless_reaction.replace('{schema}', schema))
-
-    if args.indexed:
-        with db_session:
-            db.execute(f'CREATE INDEX idx_moleculestructure__subst ON "{schema}"."MoleculeStructure" USING '
-                       'GIN (fingerprint gin__int_ops)')
-            db.execute(f'CREATE INDEX idx_reactionindex__subst ON "{schema}"."ReactionIndex" USING '
-                       'GIN (fingerprint gin__int_ops)')
 
     with db_session:
         db_config.Config(name=schema, config=config, version=major_version)
