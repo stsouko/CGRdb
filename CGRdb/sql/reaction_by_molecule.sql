@@ -17,17 +17,15 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_search_reactions_by_molecule(data bytea, role integer, search integer, threshold float, OUT id integer, OUT count integer)
+"{schema}".cgrdb_search_reactions_by_molecule(data bytea, role integer, search integer, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import MoleculeContainer, QueryContainer
 from compress_pickle import loads
 
 if search  == 1:  # search: 1 - substructure, 2 - similar
     search_function = 'substructure'
-    extra = ''
 elif search == 2:
     search_function = 'similar'
-    extra = f', {threshold}'
 else:
     raise plpy.spiexceptions.DataException('search type invalid')
 
@@ -59,7 +57,7 @@ if found:
     return found[0]
 
 # search molecules
-found = plpy.execute(f'''SELECT * FROM "{schema}".cgrdb_search_{search_function}_molecules('\\x{data.hex()}'::bytea{extra})''')[0]
+found = plpy.execute(f'''SELECT * FROM "{schema}".cgrdb_search_{search_function}_molecules('\\x{data.hex()}'::bytea)''')[0]
 # check for empty results
 if not found['count']:
     # store empty cache

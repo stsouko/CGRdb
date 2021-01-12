@@ -57,18 +57,21 @@ if GD['index']:  # use index search
         plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
         if isinstance(found[0], int):  # need to calculate tanimoto
             plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.molecule m, x.id s, icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
+SELECT x.molecule m, x.id s,
+       icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
 FROM "{schema}"."MoleculeStructure" x
 WHERE x.id = ANY(ARRAY{found}::integer[])''')
         else:  # tanimoto exists
             plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
 SELECT x.molecule m, f.s, f.t
-FROM "{schema}"."MoleculeStructure" x, (VALUES {', '.join(f'({s}::integer, {t:.2f}::float)' for s, t in found)}) AS f (s, t)
+FROM "{schema}"."MoleculeStructure" x,
+     (VALUES {', '.join(f'({s}::integer, {t:.2f}::float)' for s, t in found)}) AS f (s, t)
 WHERE x.id = f.s''')
 else:  # sequential search
     plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
     plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
-SELECT x.molecule m, x.id s, icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
+SELECT x.molecule m, x.id s,
+       icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
 FROM "{schema}"."MoleculeStructure" x
 WHERE x.fingerprint @> ARRAY{fp}::integer[]''')
     # check for empty results

@@ -17,7 +17,7 @@
 */
 
 CREATE OR REPLACE FUNCTION
-"{schema}".cgrdb_search_similar_reactions(data bytea, threshold float, OUT id integer, OUT count integer)
+"{schema}".cgrdb_search_similar_reactions(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import ReactionContainer
 from compress_pickle import loads
@@ -50,7 +50,7 @@ FROM (
     FROM "{schema}"."ReactionIndex" x
     WHERE x.fingerprint && ARRAY{fp}::integer[]
 ) c
-WHERE c.t > {threshold}''')
+WHERE c.t > 0.5''')
 
 # check for empty results
 if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:

@@ -188,12 +188,11 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
-    def find_similar(cls, structure, *, threshold=.7):
+    def find_similar(cls, structure):
         """
-        similarity search
+        Similarity search. When index not configured threshold = 0.5 is used.
 
         :param structure: CGRtools ReactionContainer
-        :param threshold: Tanimoto similarity threshold
         :return: ReactionSearchCache object with all found reactions or None
         """
         if not isinstance(structure, ReactionContainer):
@@ -204,7 +203,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f'''SELECT * FROM "{schema}".cgrdb_search_similar_reactions('\\x{structure}'::bytea, {threshold})''')[0]
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_reactions('\\x{structure}'::bytea)''')[0]
         if fnd:
             c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd
@@ -256,20 +255,19 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(f'''SELECT * FROM 
-            "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 1, 0)''')[0]
+            "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 1)''')[0]
         if fnd:
             c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd
             return c
 
     @classmethod
-    def find_similar_reactions(cls, structure, is_product: tOptional[bool] = None, *, threshold=.7):
+    def find_similar_reactions(cls, structure, is_product: tOptional[bool] = None):
         """
-        search reactions including similar molecules
+        Search reactions including similar molecules. When index not configured threshold = 0.5 is used.
 
         :param structure: CGRtools MoleculeContainer
         :param is_product: role of molecule: Reactant = False, Product = True, Any = None
-        :param threshold: Tanimoto similarity threshold
         :return:ReactionSearchCache object with all found reactions or None
         """
         if not isinstance(structure, MoleculeContainer):
@@ -287,7 +285,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(f'''SELECT * FROM
-            "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 2, {threshold})''')[0]
+            "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 2)''')[0]
         if fnd:
             c = cls._database_.ReactionSearchCache[ci]
             c.__dict__['_size'] = fnd

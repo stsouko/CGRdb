@@ -130,12 +130,11 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
             return c
 
     @classmethod
-    def find_similar(cls, structure, *, threshold=.7):
+    def find_similar(cls, structure):
         """
-        similarity search
+        Similarity search. When index not configured threshold = 0.5 is used.
 
         :param structure: CGRtools MoleculeContainer
-        :param threshold: Tanimoto similarity threshold
         :return: MoleculeSearchCache object with all found molecules or None
         """
         if not isinstance(structure, MoleculeContainer):
@@ -146,7 +145,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         structure = dumps(structure, compression='lzma').hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
-            f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea, {threshold})''')[0]
+            f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea)''')[0]
         if fnd:
             c = cls._database_.MoleculeSearchCache[ci]
             c.__dict__['_size'] = fnd
