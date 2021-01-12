@@ -27,9 +27,10 @@ molecule = loads(data, compression='lzma')
 if isinstance(molecule, QueryContainer):
     screen = MoleculeContainer()  # convert query to molecules for screening
     for n, a in molecule.atoms():
-        screen.add_atom(Element.from_atomic_number(a.atomic_number)(a.isotope), _map=n, charge=a.charge, is_radical=a.is_radical)
+        screen.add_atom(Element.from_atomic_number(a.atomic_number)(a.isotope),
+                        _map=n, charge=a.charge, is_radical=a.is_radical)
     for n, m, b in molecule.bonds():
-        screen.add_bond(n, m, b)
+        screen.add_bond(n, m, int(b))
 elif isinstance(molecule, MoleculeContainer):
     screen = molecule
 else:
@@ -49,14 +50,31 @@ if found:
 # cache not found. lets start searching
 fp = GD['cgrdb_mfp'].transform_bitset([screen])[0]
 
-plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
-plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+if GD['index']:  # use index search
+    from requests import post
+    found = post(f"{GD['index']}/substructure/molecule", json=fp).json()
+    if found:  # create cgrdb_query temp table
+        plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
+        if isinstance(found[0], int):  # need to calculate tanimoto
+            plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+SELECT x.molecule m, x.id s, icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
+FROM "{schema}"."MoleculeStructure" x
+WHERE x.id = ANY(ARRAY{found}::integer[])''')
+        else:  # tanimoto exists
+            plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+SELECT x.molecule m, f.s, f.t
+FROM "{schema}"."MoleculeStructure" x, (VALUES {', '.join(f'({s}::integer, {t:.2f}::float)' for s, t in found)}) AS f (s, t)
+WHERE x.id = f.s''')
+else:  # sequential search
+    plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
+    plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
 SELECT x.molecule m, x.id s, icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
 FROM "{schema}"."MoleculeStructure" x
 WHERE x.fingerprint @> ARRAY{fp}::integer[]''')
+    # check for empty results
+    found = plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']
 
-# check for empty results
-if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
+if not found:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
 "{schema}"."MoleculeSearchCache"(signature, operator, date, molecules, tanimotos)

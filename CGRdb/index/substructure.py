@@ -31,14 +31,13 @@ class SubstructureIndex:
         :param fingerprints: pairs of id and fingerprints of data
         :param sort_by_tanimoto: descending sort of found results. Required more memory for data storing.
         """
-        index = defaultdict(BitMap)
+        self._index = index = defaultdict(BitMap)
         self._tanimoto = tanimoto = {} if sort_by_tanimoto else None
         for n, fp in tqdm(fingerprints):
             for x in fp:
                 index[x].add(n)
             if sort_by_tanimoto:
                 tanimoto[n] = BitMap(fp)
-        self._index = dict(index)
         self._sizes = {k: len(v) for k, v in index.items()}
 
     def __getstate__(self):
@@ -51,7 +50,8 @@ class SubstructureIndex:
 
     def search(self, query: List[int]) -> Union[List[int], List[Tuple[int, float]]]:
         index = self._index
-        fb, *sq = sorted(query, key=self._sizes.__getitem__)
+        sizes = self._sizes
+        fb, *sq = sorted(query, key=lambda x: sizes.get(x, 0))
 
         records = index[fb].copy()
         for k in sq:

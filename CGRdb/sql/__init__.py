@@ -51,6 +51,7 @@ reaction = config.get('reaction', {})
 GD['cgrdb_mfp'] = LinearFingerprint(**molecule)
 GD['cgrdb_rfp'] = LinearFingerprint(**reaction)
 GD['cache_size'] = config.get('cache_size', 256)
+GD['index'] = config.get('index')
 
 $$ LANGUAGE plpython3u'''.replace('$', '$$')
 

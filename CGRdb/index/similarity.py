@@ -17,7 +17,6 @@
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
 from datasketch import MinHash, MinHashLSH
-from itertools import islice
 from multiprocessing import Pool
 from operator import itemgetter
 from pyroaring import BitMap
@@ -26,8 +25,9 @@ from typing import Collection, Tuple, List, Optional, Union
 
 
 class SimilarityIndex:
-    def __init__(self, fingerprints: Collection[Tuple[int, Collection[int]]], check_threshold: Optional[float] = .7,
-                 threshold: float = .6, num_perm: int = 64, n_workers: int = 1, chunk_size: int = 10000):
+    def __init__(self, fingerprints: Collection[Tuple[int, Collection[int]]],
+                 check_threshold: Optional[float] = .7, threshold: float = .6, num_perm: int = 64,
+                 n_workers: int = 1, chunk_size: int = 10000):
         """
         MinHashLSH based similarity search index.
 
@@ -47,35 +47,22 @@ class SimilarityIndex:
                 return n, h, BitMap(x)
             return n, h, None
 
-        self._lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
+        self._lsh = lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
         self._fingerprints = fps = {} if check_threshold else None
         self._threshold = check_threshold
 
         if n_workers != 1:
             with Pool(processes=n_workers) as pool:
-                hashes = pool.imap_unordered(get_minhash, tqdm(fingerprints), chunk_size)
-                for n, h, b in hashes:
-                    with self._lsh.insertion_session() as session:
-                        session.insert(n, h, check_duplication=False)
-                        if check_threshold:
-                            fps[n] = b
-                        for n, h, b in islice(hashes, chunk_size):
-                            session.insert(n, h, check_duplication=False)
-                            if check_threshold:
-                                fps[n] = b
-        else:
-            iterator = iter(tqdm(fingerprints))
-            for fp in iterator:
-                with self._lsh.insertion_session() as session:
-                    n, h, b = get_minhash(fp)
-                    session.insert(n, h, check_duplication=False)
+                for n, h, b in pool.imap_unordered(get_minhash, tqdm(fingerprints), chunk_size):
+                    lsh.insert(n, h, check_duplication=False)
                     if check_threshold:
                         fps[n] = b
-                    for fp in islice(iterator, chunk_size):
-                        n, h, b = get_minhash(fp)
-                        session.insert(n, h, check_duplication=False)
-                        if check_threshold:
-                            fps[n] = b
+        else:
+            for fp in tqdm(fingerprints):
+                n, h, b = get_minhash(fp)
+                lsh.insert(n, h, check_duplication=False)
+                if check_threshold:
+                    fps[n] = b
 
     def search(self, query: List[int]) -> Union[List[int], List[Tuple[int, float]]]:
         h = MinHash(num_perm=self._lsh.h, hashfunc=hash)
