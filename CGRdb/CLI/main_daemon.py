@@ -30,7 +30,7 @@ def daemon_core(args):
         nonlocal substructure_molecule
         nonlocal substructure_reaction
         nonlocal similarity_molecule
-        nonlocal substructure_reaction
+        nonlocal similarity_reaction
 
         index = locals()[f'{_type}_{target}']
 

@@ -41,19 +41,37 @@ if found:
 # cache not found. lets start searching
 fp = GD['cgrdb_rfp'].transform_bitset([cgr])[0]
 
-plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
-plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+if GD['index']:  # use index search
+    from requests import post
+    found = post(f"{GD['index']}/similarity/reaction", json=fp).json()
+    if found:  # create cgrdb_query temp table
+        plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
+        if isinstance(found[0], int):  # need to calculate tanimoto
+            plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+SELECT x.reaction r,
+       icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
+FROM "{schema}"."ReactionIndex" x
+WHERE x.id = ANY(ARRAY{found}::integer[])''')
+        else:  # tanimoto exists
+            plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
+SELECT x.reaction r, f.t
+FROM "{schema}"."ReactionIndex" x,
+     (VALUES {', '.join(f'({s}::integer, {t:.2f}::float)' for s, t in found)}) AS f (s, t)
+WHERE x.id = f.s''')
+else:  # sequential search
+    plpy.execute('DROP TABLE IF EXISTS cgrdb_query')
+    plpy.execute(f'''CREATE TEMPORARY TABLE cgrdb_query ON COMMIT DROP AS
 SELECT c.r, c.t
 FROM (
     SELECT x.reaction r,
            icount(x.fingerprint & ARRAY{fp}::integer[])::float / icount(x.fingerprint | ARRAY{fp}::integer[])::float t
     FROM "{schema}"."ReactionIndex" x
-    WHERE x.fingerprint && ARRAY{fp}::integer[]
 ) c
 WHERE c.t > 0.5''')
+    # check for empty results
+    found = plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']
 
-# check for empty results
-if not plpy.execute('SELECT COUNT(*) FROM cgrdb_query')[0]['count']:
+if not found:
     # store empty cache
     found = plpy.execute(f'''INSERT INTO
 "{schema}"."ReactionSearchCache"(signature, operator, date, reactions, tanimotos)
