@@ -35,7 +35,7 @@ setup(
     author_email='nougmanoff@protonmail.com',
     python_requires='>=3.8.0',
     entry_points={'console_scripts': ['cgrdb=CGRdb.CLI:launcher']},
-    install_requires=['CGRtools>=4.1.6,<4.2', 'LazyPony>=0.3.1,<0.4', 'StructureFingerprint>=1.21',
+    install_requires=['CGRtools>=4.1.6,<4.2', 'LazyPony>=0.3.1,<0.4', 'StructureFingerprint>=1.24',
                       'CachedMethods>=0.1.4,<0.2', 'pony>=0.7.14,<0.8', 'compress-pickle>=1.1',
                       'psycopg2-binary>=2.8.6'],
     extras_require={'autocomplete': ['argcomplete'],
