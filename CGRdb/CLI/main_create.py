@@ -46,6 +46,9 @@ def create_core(args):
     with db_session:
         if db_config.Config.exists(name=schema):
             raise KeyError('schema already exists')
+    with db_session:
+        db_config.execute(f'DROP SCHEMA IF EXISTS {schema} CASCADE')
+        db_config.execute(f'CREATE SCHEMA {schema}')
 
     db = Database()
     LazyEntityMeta.attach(db, schema, 'CGRdb')

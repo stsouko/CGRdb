@@ -17,16 +17,21 @@ DEV version
 SETUP
 -----
 
-initialize CGRdb \[after postgres setup only\] \[need only once\]
+### initialize CGRdb \[after postgres setup only\] \[need only once\]
 
-    cgrdb init -p 'your password' # use -h argument for help printing
+    cgrdb init -c '{"host": "localhost", "password": "your password", "user": "postgres"}'
 
-create database \[required empty schema 'schema_name' in db\]
+Note:  connection config is JSON string with arguments acceptable by psycopg2
 
-    cgrdb create -p 'your password' -n 'schema_name' # use -h argument for help printing
+### create database
 
-POSTGRES SETUP (Ubuntu 18.04 example)
--------------------------------------
+    cgrdb create -c '{"host": "localhost", "password": "your password", "user": "postgres"}' -n 'schema_name'
+
+Note: database admin rights required (postgres user by default)  
+Note: schema 'schema_name' will be dropped if exists and not proper CGRdb schema.
+
+POSTGRES SETUP (Ubuntu example)
+-------------------------------
 
 install  postgresql (required version 10 or newer):
 
@@ -48,9 +53,9 @@ restart postgres
 
 install `CGRtools`, `StructureFingerprint` and `compress-pickle` into system or virtual environment accessible for postgres user.
 
-    sudo pip3 install compress-pickle 
-    sudo pip3 install git+https://github.com/cimm-kzn/CGRtools.git@master#egg=CGRtools
-    sudo pip3 install git+https://github.com/dcloudf/MorganFingerprint.git@master#egg=StructureFingerprint
+    sudo pip3 install compress-pickle CGRtools StructureFingerprint
+
+Note: virtual environment should contain in bin directory activate_this.py script.
 
 COPYRIGHT
 ---------
