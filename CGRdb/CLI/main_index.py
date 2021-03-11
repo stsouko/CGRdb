@@ -59,16 +59,19 @@ def index_core(args):
 
     with db_session:
         substructure_molecule = SubstructureIndex(
-                db.execute(f'SELECT id, fingerprint FROM "{schema}"."MoleculeStructure"'),
-                sort_by_tanimoto)
+                db.execute(f'SELECT id, fingerprint FROM "{schema}"."MoleculeStructure"'), False)
     with db_session:
         similarity_molecule = SimilarityIndex(
                 db.execute(f'SELECT id, fingerprint FROM "{schema}"."MoleculeStructure"'), **args.params)
+    if sort_by_tanimoto:  # pairing fingerprints for memory saving
+        substructure_molecule._fingerprints = similarity_molecule._fingerprints
     with db_session:
         substructure_reaction = SubstructureIndex(db.execute(f'SELECT id, fingerprint FROM "{schema}"."ReactionIndex"'),
-                                                  sort_by_tanimoto)
+                                                  False)
     with db_session:
         similarity_reaction = SimilarityIndex(
                 db.execute(f'SELECT id, fingerprint FROM "{schema}"."ReactionIndex"'), **args.params)
+    if sort_by_tanimoto:  # pairing fingerprints for memory saving
+        substructure_reaction._fingerprints = similarity_reaction._fingerprints
 
     dump((substructure_molecule, substructure_reaction, similarity_molecule, similarity_reaction), args.data)

@@ -20,10 +20,10 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_mappingless_substructure_reactions(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import ReactionContainer
-from compress_pickle import loads, dumps
 from itertools import chain, repeat
+from pickle import loads, dumps
 
-reaction = loads(data, compression='lzma')
+reaction = loads(data)
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 
@@ -41,7 +41,7 @@ if found:
 # search molecules
 molecules = []  # cached molecules
 for m in chain(reaction.reactants, reaction.products):
-    m = dumps(m, compression='lzma').hex()
+    m = dumps(m).hex()
     found = plpy.execute(f'''SELECT * FROM "{schema}".cgrdb_search_substructure_molecules('\\x{m}'::bytea)''')[0]
     # check for empty results
     if not found['count']:

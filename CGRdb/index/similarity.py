@@ -17,11 +17,19 @@
 #  along with this program; if not, see <https://www.gnu.org/licenses/>.
 #
 from datasketch import MinHash, MinHashLSH
+from itertools import tee
 from multiprocessing import Pool
 from operator import itemgetter
 from pyroaring import BitMap
 from tqdm import tqdm
 from typing import Collection, Tuple, List, Optional, Union
+
+
+def get_minhash(args):
+    (n, x), num_perm = args
+    h = MinHash(num_perm=num_perm, hashfunc=hash)
+    h.update_batch(x)
+    return n, h
 
 
 class SimilarityIndex:
@@ -39,36 +47,34 @@ class SimilarityIndex:
         :param n_workers: multiprocessing.Pool processes. Doesn't use Pool when equal to 1
         :param chunk_size: Chunk size of MinHashLSH.insertion_session and Pool.imap
         """
-        def get_minhash(fp):
-            n, x = fp
-            h = MinHash(num_perm=num_perm, hashfunc=hash)
-            h.update_batch(x)
-            if check_threshold:
-                return n, h, BitMap(x)
-            return n, h, None
 
         self._lsh = lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
-        self._fingerprints = fps = {} if check_threshold else None
+        self._fingerprints = fps = {} if check_threshold is not None else None
         self._threshold = check_threshold
 
         if n_workers != 1:
+            if check_threshold is not None:
+                pipe1, pipe2 = tee(fingerprints, 2)
+            else:
+                pipe1 = fingerprints
             with Pool(processes=n_workers) as pool:
-                for n, h, b in pool.imap_unordered(get_minhash, tqdm(fingerprints), chunk_size):
+                for n, h in pool.imap_unordered(get_minhash, ((x, num_perm) for x in tqdm(pipe1)), chunk_size):
                     lsh.insert(n, h, check_duplication=False)
-                    if check_threshold:
-                        fps[n] = b
+                    if check_threshold is not None:
+                        m, fp = next(pipe2)
+                        fps[m] = BitMap(fp)
         else:
             for fp in tqdm(fingerprints):
-                n, h, b = get_minhash(fp)
+                n, h = get_minhash((fp, num_perm))
                 lsh.insert(n, h, check_duplication=False)
-                if check_threshold:
-                    fps[n] = b
+                if check_threshold is not None:
+                    fps[n] = BitMap(fp[1])
 
     def search(self, query: List[int]) -> Union[List[int], List[Tuple[int, float]]]:
         h = MinHash(num_perm=self._lsh.h, hashfunc=hash)
         h.update_batch(query)
         found = self._lsh.query(h)
-        if self._threshold:
+        if self._threshold is not None:
             threshold = self._threshold
             fps = self._fingerprints
             bm = BitMap(query)

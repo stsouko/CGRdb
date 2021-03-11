@@ -1,8 +1,8 @@
 {
  "molecule": {"number_bit_pairs": 4, "max_radius": 6, "min_radius": 1, "number_active_bits": 2, "length": 2048},
  "reaction": {"number_bit_pairs": 4, "max_radius": 6, "min_radius": 1, "number_active_bits": 2, "length": 2048},
- "packages": [],
+ "packages": ["cartridge_plugin_packages"],
  "cache_size": 1024,
- "environment": "/path/to/venv/dir/with_same_python_version",
- "index": "https?://url:without_slash"
+ "environment": "/path/to/venv/dir/with_same_python_version[can be omitted]",
+ "index": "https?://url_to_index_daemon[can be omitted]:port_without_slash"
 }

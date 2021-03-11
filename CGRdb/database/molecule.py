@@ -19,9 +19,9 @@
 #
 from CachedMethods import cached_property
 from CGRtools.containers import MoleculeContainer, QueryContainer
-from compress_pickle import dumps, loads
 from datetime import datetime
 from LazyPony import LazyEntityMeta
+from pickle import dumps, loads
 from pony.orm import PrimaryKey, Required, Set, IntArray, FloatArray, composite_key, left_join, select, raw_sql
 from typing import Dict
 
@@ -81,7 +81,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_molecule('\\x{structure}'::bytea)''')[0]
@@ -94,7 +94,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_molecule('\\x{structure}'::bytea)''')[0]
@@ -120,7 +120,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_substructure_molecules('\\x{structure}'::bytea)''')[0]
@@ -142,7 +142,7 @@ class Molecule(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not len(structure):
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_similar_molecules('\\x{structure}'::bytea)''')[0]
@@ -215,11 +215,11 @@ class MoleculeStructure(metaclass=LazyEntityMeta, database='CGRdb'):
         structure = kwargs.pop('structure')
         if not isinstance(structure, MoleculeContainer):
             raise TypeError('molecule expected')
-        super().__init__(_structure=dumps(structure, compression='lzma', optimize=True, preset=9), **kwargs)
+        super().__init__(_structure=dumps(structure), **kwargs)
 
     @cached_property
     def structure(self):
-        return loads(self._structure, compression='lzma')
+        return loads(self._structure)
 
     def __str__(self):
         """

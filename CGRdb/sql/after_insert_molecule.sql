@@ -22,10 +22,10 @@ RETURNS TRIGGER
 AS $$
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
-from compress_pickle import loads
 from functools import lru_cache
 from json import loads as json_loads
 from itertools import product
+from pickle import loads
 
 data = TD['new']
 if data['is_canonic']:
@@ -57,7 +57,7 @@ FROM "{schema}"."MoleculeStructure" x JOIN (
 ) mr ON x.molecule = mr.molecule
 GROUP BY mr.reaction ORDER BY mr.reaction'''
 
-cache = lru_cache(cache_size)(lambda x: loads(s, compression='lzma'))
+cache = lru_cache(cache_size)(lambda x: loads(s))
 for ms_row, mp_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp)):
     m2s = defaultdict(list)  # load structures of molecules
     for mi, si, s in zip(ms_row['m'], ms_row['s'], ms_row['d']):

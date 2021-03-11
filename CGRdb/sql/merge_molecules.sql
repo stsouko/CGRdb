@@ -22,10 +22,10 @@ RETURNS VOID
 AS $$
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
-from compress_pickle import dumps, loads
 from functools import lru_cache
 from json import loads as json_loads
 from itertools import product
+from pickle import dumps, loads
 
 rfp = GD['cgrdb_rfp']
 cache_size = GD['cache_size']
@@ -39,7 +39,7 @@ t_ids = []
 q = f'''SELECT x.id, x.molecule, x.structure FROM "{schema}"."MoleculeStructure" x
 WHERE x.molecule in ({source}, {target})'''
 for x in plpy.execute(q):
-    s = loads(x['structure'], compression='lzma')
+    s = loads(x['structure'])
     if x['molecule'] == source:
         s_structures.append(s)
         s_ids.append(x['id'])
@@ -64,7 +64,7 @@ if len(set(mp.values())) != len(mp) or {n: a.atomic_number for n, a in t.atoms()
 for s, si in zip(s_structures, s_ids):
     s.remap(mp)
     plpy.execute(f'''UPDATE "{schema}"."MoleculeStructure"
-SET structure = '\\x{dumps(s, compression='lzma', optimize=True, preset=9).hex()}'::bytea, is_canonic = False WHERE id = {si}''')
+SET structure = '\\x{dumps(s).hex()}'::bytea, is_canonic = False WHERE id = {si}''')
 
 # source reactions remapping
 rmp = {t: s for s, t in mp.items()}  # target to source mapping
@@ -81,7 +81,7 @@ for x in plpy.cursor(f'SELECT x.id, x.mapping FROM "{schema}"."MoleculeReaction"
     plpy.execute(f'UPDATE "{schema}"."MoleculeReaction" SET mapping = {mp} WHERE id = {x["id"]}')
 
 # index update
-cache = lru_cache(cache_size)(lambda x: loads(s, compression='lzma'))
+cache = lru_cache(cache_size)(lambda x: loads(s))
 for molecule, update_s, update_si in ((source, t_structures, t_ids), (target, s_structures, s_ids)):
     get_mp = f'''SELECT x.reaction r, array_agg(x.id) i, array_agg(x.molecule) m, array_agg(x.mapping) d, array_agg(x.is_product) p
     FROM "{schema}"."MoleculeReaction" x

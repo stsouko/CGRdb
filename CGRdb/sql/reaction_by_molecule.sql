@@ -20,7 +20,7 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_reactions_by_molecule(data bytea, role integer, search integer, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import MoleculeContainer, QueryContainer
-from compress_pickle import loads
+from pickle import loads
 
 if search  == 1:  # search: 1 - substructure, 2 - similar
     search_function = 'substructure'
@@ -41,7 +41,7 @@ elif role == 2:
 else:
     raise plpy.spiexceptions.DataException('role invalid')
 
-molecule = loads(data, compression='lzma')
+molecule = loads(data)
 if not isinstance(molecule, (MoleculeContainer, QueryContainer)):
     raise plpy.spiexceptions.DataException('MoleculeContainer or QueryContainer required')
 

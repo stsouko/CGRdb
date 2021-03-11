@@ -32,21 +32,21 @@ class SubstructureIndex:
         :param sort_by_tanimoto: descending sort of found results. Required more memory for data storing.
         """
         self._index = index = defaultdict(BitMap)
-        self._tanimoto = tanimoto = {} if sort_by_tanimoto else None
+        self._fingerprints = fps = {} if sort_by_tanimoto else None
         for n, fp in tqdm(fingerprints):
             for x in fp:
                 index[x].add(n)
             if sort_by_tanimoto:
-                tanimoto[n] = BitMap(fp)
+                fps[n] = BitMap(fp)
         self._sizes = {k: len(v) for k, v in index.items()}
 
     def __getstate__(self):
-        return {'index': self._index, 'tanimoto': self._tanimoto}
+        return {'index': self._index, 'fingerprints': self._fingerprints}
 
     def __setstate__(self, state):
         self._index = state['index']
-        self._tanimoto = state['tanimoto']
-        self._sizes = {k: len(v) for k, v in self._index.items()}
+        self._fingerprints = state['fingerprints']
+        self._sizes = {k: len(v) for k, v in state['index'].items()}
 
     def search(self, query: List[int]) -> Union[List[int], List[Tuple[int, float]]]:
         index = self._index
@@ -58,9 +58,9 @@ class SubstructureIndex:
             records &= index[k]
             if not records:
                 return []
-        if self._tanimoto:
+        if self._fingerprints:
             bm = BitMap(query)
-            fps = self._tanimoto
+            fps = self._fingerprints
             return sorted(((x, bm.jaccard_index(fps[x])) for x in records), key=itemgetter(1), reverse=True)
         return list(records)
 

@@ -20,9 +20,9 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_similar_reactions(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import ReactionContainer
-from compress_pickle import loads
+from pickle import loads
 
-reaction = loads(data, compression='lzma')
+reaction = loads(data)
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 

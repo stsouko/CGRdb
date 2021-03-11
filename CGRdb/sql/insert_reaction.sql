@@ -22,12 +22,12 @@ RETURNS TRIGGER
 AS $$
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
-from compress_pickle import dumps, loads
 from itertools import chain, product, repeat
+from pickle import dumps, loads
 
 rfp = GD['cgrdb_rfp']
 data = TD['new']
-reaction = loads(data['structure'], compression='lzma')
+reaction = loads(data['structure'])
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 elif not reaction.reactants or not reaction.products:
@@ -48,7 +48,7 @@ while True:
     for row in plpy.execute(load):
         sg = row['signature']
         sg2m[sg] = mi = row['molecule']
-        sg2c[sg] = c = loads(row['structure'], compression='lzma')  # structure with mapping as in db
+        sg2c[sg] = c = loads(row['structure'])  # structure with mapping as in db
         m2c[mi].append(c)
         m2ms[mi].append(row['id'])
 
@@ -64,8 +64,7 @@ while True:
                 mis = [x['id'] for x in plpy.execute('INSERT INTO "{schema}"."Molecule" (id) VALUES %s RETURNING id' % \
                        ', '.join(['(DEFAULT)'] * len(new)))]
                 insert = 'INSERT INTO "{schema}"."MoleculeStructure" (structure, molecule) VALUES %s RETURNING id' % \
-                         ', '.join(f"('\\x{dumps(s, compression='lzma', optimize=True, preset=9).hex()}'::bytea, {m})"
-                                   for m, s in zip(mis, new.values()))
+                         ', '.join(f"('\\x{dumps(s).hex()}'::bytea, {m})" for m, s in zip(mis, new.values()))
                 sis = [x['id'] for x in plpy.execute(insert)]
         except plpy.SPIError:
             continue

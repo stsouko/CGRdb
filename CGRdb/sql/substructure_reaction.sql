@@ -21,12 +21,12 @@ CREATE OR REPLACE FUNCTION
 AS $$
 from CGRtools.containers import ReactionContainer
 from collections import defaultdict
-from compress_pickle import loads
 from functools import lru_cache
 from json import loads as json_loads
 from itertools import product
+from pickle import loads
 
-reaction = loads(data, compression='lzma')
+reaction = loads(data)
 if not isinstance(reaction, ReactionContainer):
     raise plpy.spiexceptions.DataException('ReactionContainer required')
 
@@ -106,7 +106,7 @@ GROUP BY f.r'''
 
 get_rt = 'SELECT f.r, f.t FROM cgrdb_filtered f'
 
-cache = lru_cache(GD['cache_size'])(lambda x: loads(s, compression='lzma'))
+cache = lru_cache(GD['cache_size'])(lambda x: loads(s))
 ris, rts = [], []
 for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy.cursor(get_rt)):
     m2s = defaultdict(list)  # load structures of molecules

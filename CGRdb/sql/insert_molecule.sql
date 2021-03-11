@@ -21,18 +21,18 @@ CREATE OR REPLACE FUNCTION "{schema}".cgrdb_insert_molecule_structure()
 RETURNS TRIGGER
 AS $$
 from CGRtools.containers import MoleculeContainer
-from compress_pickle import loads
+from pickle import loads
 
 mfp = GD['cgrdb_mfp']
 data = TD['new']
-molecule = loads(data['structure'], compression='lzma')
+molecule = loads(data['structure'])
 if not isinstance(molecule, MoleculeContainer):
     raise plpy.spiexceptions.DataException('MoleculeContainer required')
 
 current = plpy.execute('SELECT x.id, x.structure FROM "{schema}"."MoleculeStructure" x '
                        f'WHERE x.molecule = {data["molecule"]} AND x.is_canonic')
 if current:  # check for atom mapping
-    s = loads(current[0]['structure'], compression='lzma')
+    s = loads(current[0]['structure'])
     if {n: a.atomic_number for n, a in molecule.atoms()} != {n: a.atomic_number for n, a in s.atoms()}:
         raise plpy.spiexceptions.DataException('structure forms of molecule should has same mapping and atoms')
     data['is_canonic'] = False  # additional forms of structure should not be canonic

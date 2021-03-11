@@ -21,9 +21,9 @@ CREATE OR REPLACE FUNCTION
 AS $$
 from CGRtools.containers import MoleculeContainer, QueryContainer
 from CGRtools.periodictable import Element
-from compress_pickle import loads
+from pickle import loads
 
-molecule = loads(data, compression='lzma')
+molecule = loads(data)
 if isinstance(molecule, QueryContainer):
     screen = MoleculeContainer()  # convert query to molecules for screening
     for n, a in molecule.atoms():
@@ -100,7 +100,7 @@ FROM (
 ORDER BY h.t DESC'''
 mis, sts = [], []
 for row in plpy.cursor(get_data):
-    if molecule <= loads(row['d'], compression='lzma'):
+    if molecule <= loads(row['d']):
         mis.append(row['m'])
         sts.append(row['t'])
 

@@ -20,9 +20,9 @@ CREATE OR REPLACE FUNCTION
 "{schema}".cgrdb_search_similar_molecules(data bytea, OUT id integer, OUT count integer)
 AS $$
 from CGRtools.containers import MoleculeContainer
-from compress_pickle import loads
+from pickle import loads
 
-molecule = loads(data, compression='lzma')
+molecule = loads(data)
 if not isinstance(molecule, MoleculeContainer):
     raise plpy.spiexceptions.DataException('MoleculeContainer required')
 

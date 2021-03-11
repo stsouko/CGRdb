@@ -19,10 +19,10 @@
 from CachedMethods import cached_property
 from CGRtools.containers import ReactionContainer, MoleculeContainer, QueryContainer
 from collections import defaultdict
-from compress_pickle import dumps
 from datetime import datetime
 from itertools import product
 from LazyPony import LazyEntityMeta
+from pickle import dumps
 from pony.orm import PrimaryKey, Required, Optional, Set, Json, select, IntArray, FloatArray, composite_key, raw_sql
 from typing import Optional as tOptional
 
@@ -38,7 +38,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         storing reaction in DB.
         :param structure: CGRtools ReactionContainer
         """
-        super().__init__(_structure=dumps(structure, compression='lzma'))
+        super().__init__(_structure=dumps(structure))
 
     def __str__(self):
         """
@@ -141,7 +141,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_reaction('\\x{structure}'::bytea)''')[0]
@@ -154,7 +154,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         fnd = cls._database_.select(
                 f'''SELECT * FROM "{schema}".cgrdb_search_structure_reaction('\\x{structure}'::bytea)''')[0]
@@ -178,7 +178,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_substructure_reactions('\\x{structure}'::bytea)''')[0]
@@ -200,7 +200,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants or not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_similar_reactions('\\x{structure}'::bytea)''')[0]
@@ -222,7 +222,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         elif not structure.reactants and not structure.products:
             raise ValueError('empty query')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(
             f'''SELECT * FROM "{schema}".cgrdb_search_mappingless_substructure_reactions('\\x{structure}'::bytea)''')[0]
@@ -252,7 +252,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         else:
             raise ValueError('invalid role')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(f'''SELECT * FROM 
             "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 1)''')[0]
@@ -282,7 +282,7 @@ class Reaction(metaclass=LazyEntityMeta, database='CGRdb'):
         else:
             raise ValueError('invalid role')
 
-        structure = dumps(structure, compression='lzma').hex()
+        structure = dumps(structure).hex()
         schema = cls._table_[0]  # define DB schema
         ci, fnd = cls._database_.select(f'''SELECT * FROM
             "{schema}".cgrdb_search_reactions_by_molecule('\\x{structure}'::bytea, {role}, 2)''')[0]
