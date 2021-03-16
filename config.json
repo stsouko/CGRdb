@@ -4,5 +4,6 @@
  "packages": ["cartridge_plugin_packages"],
  "cache_size": 1024,
  "environment": "/path/to/venv/dir/with_same_python_version[can be omitted]",
- "index": "https?://url_to_index_daemon[can be omitted]:port_without_slash"
+ "index": "https?://url_to_index_daemon[can be omitted]:port_without_slash",
+ "substructure_limit": 0
 }

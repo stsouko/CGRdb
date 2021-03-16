@@ -90,7 +90,7 @@ RETURNING id, 0 count''')
         found = plpy.execute(get_cache)
     return found[0]
 
-# get most similar structure for each molecule
+# get most substructures for each molecule
 get_data = '''SELECT h.m, h.t, s.structure d
 FROM (
     SELECT DISTINCT ON (f.m) f.m, f.s, f.t
@@ -98,11 +98,16 @@ FROM (
     ORDER BY f.m, f.t DESC
 ) h JOIN "{schema}"."MoleculeStructure" s ON h.s = s.id
 ORDER BY h.t DESC'''
+substructure_limit = GD['substructure_limit']
 mis, sts = [], []
+found_count = 0
 for row in plpy.cursor(get_data):
     if molecule <= loads(row['d']):
         mis.append(row['m'])
         sts.append(row['t'])
+        found_count += 1
+        if found_count == substructure_limit:
+            break
 
 # store found molecules to cache
 found = plpy.execute(f'''INSERT INTO

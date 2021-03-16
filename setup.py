@@ -22,7 +22,7 @@ from pathlib import Path
 from setuptools import setup, find_packages
 
 
-version = '4.1.1'
+version = '4.1.2'
 
 
 setup(

@@ -52,6 +52,7 @@ GD['cgrdb_mfp'] = LinearFingerprint(**molecule)
 GD['cgrdb_rfp'] = LinearFingerprint(**reaction)
 GD['cache_size'] = config.get('cache_size', 256)
 GD['index'] = config.get('index')
+GD['substructure_limit'] = config.get('substructure_limit') or 10 ** 12
 
 $$ LANGUAGE plpython3u'''.replace('$', '$$')
 

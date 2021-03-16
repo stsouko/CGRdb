@@ -106,8 +106,10 @@ GROUP BY f.r'''
 
 get_rt = 'SELECT f.r, f.t FROM cgrdb_filtered f'
 
+substructure_limit = GD['substructure_limit']
 cache = lru_cache(GD['cache_size'])(lambda x: loads(s))
 ris, rts = [], []
+found_count = 0
 for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy.cursor(get_rt)):
     m2s = defaultdict(list)  # load structures of molecules
     for mi, si, s in zip(ms_row['m'], ms_row['s'], ms_row['d']):
@@ -130,6 +132,9 @@ for ms_row, mp_row, rt_row in zip(plpy.cursor(get_ms), plpy.cursor(get_mp), plpy
     if any(cgr <= ~ReactionContainer(ms[:lr], ms[lr:]) for ms in product(*structures)):
         ris.append(rt_row['r'])
         rts.append(rt_row['t'])
+        found_count += 1
+        if found_count == substructure_limit:
+            break
 
 # store found molecules to cache
 found = plpy.execute(f'''INSERT INTO
